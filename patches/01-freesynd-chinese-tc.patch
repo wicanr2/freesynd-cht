@@ -1,0 +1,1021 @@
+diff --git a/engine/include/fs-engine/enginecommon.h b/engine/include/fs-engine/enginecommon.h
+index d583ca2..b3b22cc 100644
+--- a/engine/include/fs-engine/enginecommon.h
++++ b/engine/include/fs-engine/enginecommon.h
+@@ -38,7 +38,8 @@ namespace fs_eng
+         ENGLISH,
+         FRENCH,
+         ITALIAN,
+-        GERMAN
++        GERMAN,
++        CHINESE_TC
+     };
+     
+     //! The maximum number of colors in a palette
+diff --git a/engine/include/fs-engine/gfx/font.h b/engine/include/fs-engine/gfx/font.h
+index a9cfc6c..23dd332 100644
+--- a/engine/include/fs-engine/gfx/font.h
++++ b/engine/include/fs-engine/gfx/font.h
+@@ -26,6 +26,7 @@
+ #define FONT_H
+ 
+ #include <map>
++#include <unordered_map>
+ #include "utf8.h"
+ 
+ #include "fs-utils/common.h"
+@@ -70,10 +71,25 @@ public:
+     //! returns true if given code point is printable with the font
+     bool isPrintable(utf8::utfchar32_t codePoint);
+ 
++    //! Register a CJK glyph: codepoint -> sprite id (from a separately loaded
++    //! atlas, e.g. chinese-16.fnt). Non-ASCII codepoints rendered via this map
++    //! bypass the CP437 lookup entirely.
++    void registerCjkGlyph(utf8::utfchar32_t codePoint, int spriteId) {
++        cjkSpriteMap_[codePoint] = spriteId;
++    }
++
++    //! Point the font at the SpriteManager that owns the CJK glyph sprites.
++    //! Lifetime is managed by FontManager; the pointer must outlive this Font.
++    void setCjkSprites(SpriteManager *m) { cjkSprites_ = m; }
++
+ protected:
+     //! Returns the sprite for the given unicode
+     Sprite *getSpriteForCodepoint(utf8::utfchar32_t codePoint);
+ 
++    //! Returns the CJK sprite + owning manager for a codepoint, or nullptrs.
++    //! The pair lets the renderer pick the right drawSprite() target.
++    Sprite *getCjkSpriteForCodepoint(utf8::utfchar32_t codePoint);
++
+ protected:
+     SpriteManager *sprites_;
+     int offset_;
+@@ -82,6 +98,12 @@ protected:
+     int defaultWidth_;
+     //! The default height for this font
+     int defaultHeight_;
++    //! Optional CJK codepoint -> sprite id (populated by FontManager when a
++    //! Chinese font pack is loaded). Empty for ASCII-only languages.
++    std::unordered_map<utf8::utfchar32_t, int> cjkSpriteMap_;
++    //! Owns the CJK sprites referenced by cjkSpriteMap_ ids. Distinct from
++    //! sprites_ because CJK glyphs are loaded from a separate atlas.
++    SpriteManager *cjkSprites_ = nullptr;
+ };
+ 
+ /*!
+@@ -100,7 +122,6 @@ protected:
+     //! returns the sprite which can be highlighted or not
+     Sprite *getSpriteForCodepoint(utf8::utfchar32_t codePoint, bool highlighted);
+ 
+-protected:
+     int lightOffset_;
+ };
+ 
+diff --git a/engine/include/fs-engine/gfx/fontmanager.h b/engine/include/fs-engine/gfx/fontmanager.h
+index ac77e78..4c19080 100644
+--- a/engine/include/fs-engine/gfx/fontmanager.h
++++ b/engine/include/fs-engine/gfx/fontmanager.h
+@@ -26,6 +26,8 @@
+ #ifndef FONTMANAGER_H
+ #define FONTMANAGER_H
+ 
++#include <vector>
++
+ #include "fs-utils/common.h"
+ #include "fs-engine/gfx/font.h"
+ 
+@@ -52,6 +54,27 @@ public:
+     //! Creates all fonts
+     void loadFonts(SpriteManager *pMenuSprites, fs_eng::Palette &menuPalette, bool loadIntroFont);
+ 
++    //! Load the Chinese (or other CJK) bitmap font packs and wire them into the
++    //! menu/game fonts. Two packs are used so dense small-text UI (briefings,
++    //! labels, lists at SIZE_1/SIZE_2) gets 12px glyphs that sit closer to the
++    //! original Latin font, while big menu titles/buttons (SIZE_3/SIZE_4) and
++    //! the in-game / intro fonts keep the more legible 16px glyphs.
++    //!
++    //! The .fnt format is the FSCJKxx binary produced by tools/ttf2fnt.py:
++    //!     8 bytes  "FSCJK16\0"  (or "FSCJK12\0" for the 12px variant)
++    //!     4 bytes  uint32 LE count
++    //!     count*4  uint32 LE codepoints (sorted ascending)
++    //!     count*N  bytes glyphs (2 bytes/row MSB-first; N=32 for 16px, 24 for 12px)
++    //! Returns true on success. If the 12px pack is missing the 16px pack is
++    //! reused for the small sizes so text still renders (just larger).
++    //! @param path16   Path to the 16px pack (SIZE_3/SIZE_4 + game + intro).
++    //! @param path12   Path to the 12px pack (SIZE_1/SIZE_2).
++    //! @param palette  Palette to bind to the glyph atlas. Index 252 must be
++    //!                 the foreground colour (typically white) so the existing
++    //!                 colour-modulation paths can tint glyphs.
++    bool loadCjkFont(const std::string& path16, const std::string& path12,
++                     fs_eng::Palette &palette);
++
+     /*!
+      * Returns the font used in menus.
+      * \param size Size of the font
+@@ -80,6 +103,13 @@ private:
+     void createGameFont(fs_eng::Palette &menuPalette);
+     void createIntroFont();
+ 
++    //! Read one FSCJKxx pack, build a glyph atlas into atlasOut, and register
++    //! every glyph into each of the given fonts. Returns false on any IO/parse
++    //! error (atlasOut is left null).
++    bool loadCjkAtlas(const std::string& path, fs_eng::Palette &palette,
++                      std::unique_ptr<SpriteManager>& atlasOut,
++                      const std::vector<Font*>& fonts);
++
+ private:
+     /*!
+      * Menu fonts have different sizes.
+@@ -92,6 +122,11 @@ private:
+     std::unique_ptr<Font> pIntroFont_;
+     /*! Sprite manager for intro font. */
+     std::unique_ptr<SpriteManager> pIntroFontSprites_;
++
++    /*! Owns the 16px CJK glyph atlas (SIZE_3/SIZE_4 + game + intro). Null until loadCjkFont. */
++    std::unique_ptr<SpriteManager> pCjkSprites_;
++    /*! Owns the 12px CJK glyph atlas (SIZE_1/SIZE_2). Null until loadCjkFont. */
++    std::unique_ptr<SpriteManager> pCjkSprites12_;
+ };
+ 
+ }
+diff --git a/engine/include/fs-engine/gfx/spritemanager.h b/engine/include/fs-engine/gfx/spritemanager.h
+index 22afb31..b02d2ef 100644
+--- a/engine/include/fs-engine/gfx/spritemanager.h
++++ b/engine/include/fs-engine/gfx/spritemanager.h
+@@ -67,6 +67,25 @@ public:
+ 
+     //! Loads sprites from the given files
+     void loadSprites(const std::string &tabFile, const std::string &datFile, const fs_eng::Palette &palette);
++
++    /*! \brief
++     * Load sprites from pre-decoded 8-bit bitmap glyphs. Used by the CJK font
++     * loader: each glyph arrives as a tightly packed (no stride padding) array
++     * of `width*height` palette indices. The atlas, sprites_ array and texture
++     * are built in one shot using the same packer as the original-game loader.
++     *
++     * @param glyphs   One entry per sprite. `pixels` is `width*height` bytes.
++     * @param palette  Palette to bind to the texture. The transparent index is
++     *                 255 — keep your glyph bytes within 0..254.
++     * @return         true on success.
++     */
++    struct GlyphBitmap {
++        int width;
++        int height;
++        const uint8_t *pixels;
++    };
++    bool loadGlyphSprites(const std::vector<GlyphBitmap>& glyphs, const fs_eng::Palette &palette);
++
+     //! Returns true if this manager has loaded files
+     bool loaded() { return spriteCount_ != 0; }
+     //! Returns the number of loaded sprites
+diff --git a/engine/src/appcontext.cpp b/engine/src/appcontext.cpp
+index 40145c1..d2e08ac 100644
+--- a/engine/src/appcontext.cpp
++++ b/engine/src/appcontext.cpp
+@@ -190,6 +190,9 @@ void AppContext::readLanguage(const int languageId) {
+     case 4:
+         curr_language_ = fs_eng::ENGLISH;
+         break;
++    case 5:
++        curr_language_ = fs_eng::CHINESE_TC;
++        break;
+     default: // In this case, we use the OS locale to define the language
+         curr_language_ = g_System.getLanguageFromSystem();
+         break;
+@@ -205,6 +208,9 @@ void AppContext::readLanguage(const int languageId) {
+         case fs_eng::GERMAN:
+             filename = "lang/german.lng";
+             break;
++        case fs_eng::CHINESE_TC:
++            filename = "lang/chinese-tw.lng";
++            break;
+         default:
+             filename = "lang/english.lng";
+             break;
+diff --git a/engine/src/gfx/font.cpp b/engine/src/gfx/font.cpp
+index 5d7bc09..068058b 100644
+--- a/engine/src/gfx/font.cpp
++++ b/engine/src/gfx/font.cpp
+@@ -123,8 +123,21 @@ bool Font::setPalette(const fs_eng::Palette &newPalette) {
+  * \return Sprite* Null if no sprite was found
+  *
+  */
++Sprite * Font::getCjkSpriteForCodepoint(utf8::utfchar32_t codePoint) {
++    if (codePoint < 0x80 || cjkSpriteMap_.empty() || cjkSprites_ == nullptr) {
++        return nullptr;
++    }
++    auto it = cjkSpriteMap_.find(codePoint);
++    if (it == cjkSpriteMap_.end()) {
++        return nullptr;
++    }
++    return cjkSprites_->sprite(it->second);
++}
++
+ Sprite * Font::getSpriteForCodepoint(utf8::utfchar32_t codePoint) {
+-    // We look for the corresponding character in cp437 table
++    // ASCII / CP437 path (original behaviour). CJK lookup happens at the
++    // drawText / textWidth call sites because it lives in a different
++    // SpriteManager and needs its own drawSprite() target.
+     if (codePoint > sizeof(unicodeToCp437)) {
+         return nullptr; // out-of-range
+     }
+@@ -176,6 +189,14 @@ void Font::drawText(int x, int y, const std::string& text, bool x2) {
+                 continue;
+             }
+ 
++            // CJK glyphs live in a separate sprite atlas; draw them via that
++            // atlas's manager and advance the cursor by the glyph's own width.
++            if (Sprite *cjk = getCjkSpriteForCodepoint(codePoint)) {
++                cjkSprites_->drawSprite(cjk->id(), x, y, false, x2);
++                x += cjk->width() * sc; // full-width advance: CJK cells abut
++                continue;
++            }
++
+             Sprite *sprite = getSpriteForCodepoint(codePoint);
+             if (sprite) {
+                 int y_offset = 0;
+@@ -212,6 +233,10 @@ int Font::textWidth(const std::string& text, bool x2) {
+                 x += defaultWidth_ * sc - sc;
+                 continue;
+             }
++            if (Sprite *cjk = getCjkSpriteForCodepoint(codePoint)) {
++                x += cjk->width() * sc; // full-width advance: CJK cells abut
++                continue;
++            }
+             Sprite *s = getSpriteForCodepoint(codePoint);
+             if (s) {
+                 x += s->width() * sc - sc;
+@@ -238,6 +263,10 @@ int Font::textHeight(bool x2) {
+  *
+  */
+ bool Font::isPrintable(utf8::utfchar32_t codePoint) {
++    // Anything registered as a CJK glyph counts as printable.
++    if (codePoint >= 0x80 && cjkSpriteMap_.count(codePoint) > 0) {
++        return true;
++    }
+     // We look for the corresponding character in cp437 table
+     if (codePoint > sizeof(unicodeToCp437)) {
+         return false; // out-of-range
+@@ -262,7 +291,10 @@ MenuFont::MenuFont(SpriteManager *sprites, int darkOffset, int lightOffset, char
+  *
+  */
+ Sprite *MenuFont::getSpriteForCodepoint(utf8::utfchar32_t codePoint, bool highlighted) {
+-    // We look for the corresponding character in cp437 table
++    // CJK lookup is performed inline in MenuFont::drawText because the sprite
++    // belongs to cjkSprites_ (a different SpriteManager) and needs its own
++    // drawSprite() call.
++    // ASCII / CP437 path (original behaviour).
+     if (codePoint > sizeof(unicodeToCp437)) {
+         return nullptr; // out-of-range
+     }
+@@ -314,6 +346,14 @@ void MenuFont::drawText(int x, int y, const std::string& text, bool highlighted,
+                 continue;
+             }
+ 
++            // CJK path: single sprite per codepoint, no dark/light variants
++            // (highlight is conveyed by the menu's selection bar background).
++            if (Sprite *cjk = getCjkSpriteForCodepoint(codePoint)) {
++                cjkSprites_->drawSprite(cjk->id(), x, y, false, x2);
++                x += cjk->width() * sc; // full-width advance: CJK cells abut
++                continue;
++            }
++
+             Sprite *sprite = getSpriteForCodepoint(codePoint, highlighted);
+             if (sprite) {
+                 int y_offset = 0;
+@@ -357,6 +397,7 @@ void GameFont::drawText(int x, int y, const std::string& text, fs_eng::FSColor t
+     int sc = 1;
+     int ox = x;
+     uint8_t fromColor = 252;
++    (void)fromColor;
+ 
+     std::string newText(text);
+     std::string::iterator b = newText.begin();
+@@ -377,6 +418,14 @@ void GameFont::drawText(int x, int y, const std::string& text, fs_eng::FSColor t
+                 continue;
+             }
+ 
++            // CJK path: tinted via the same color modulation used by ASCII glyphs.
++            if (Sprite *cjk = getCjkSpriteForCodepoint(codePoint)) {
++                cjkSprites_->setColorModulation(toColor);
++                cjkSprites_->drawSprite(cjk->id(), x, y);
++                x += cjk->width() * sc; // full-width advance: CJK cells abut
++                continue;
++            }
++
+             // get the sprite for the character
+             Sprite *sprite = getSpriteForCodepoint(codePoint);
+             if (sprite) {
+diff --git a/engine/src/gfx/fontmanager.cpp b/engine/src/gfx/fontmanager.cpp
+index dae52c9..d7796c7 100644
+--- a/engine/src/gfx/fontmanager.cpp
++++ b/engine/src/gfx/fontmanager.cpp
+@@ -26,8 +26,11 @@
+ #include "fs-engine/gfx/fontmanager.h"
+ 
+ #include <cassert>
++#include <cstdio>
++#include <vector>
+ 
+ #include "fs-utils/log/log.h"
++#include "fs-utils/common.h"
+ 
+ namespace fs_eng {
+ 
+@@ -110,6 +113,127 @@ void FontManager::createIntroFont() {
+     pIntroFont_ = std::make_unique<Font>(pIntroFontSprites_.get(), 1, '!', "0x21-0x60,0x80-0xa8");
+ }
+ 
++bool FontManager::loadCjkAtlas(const std::string& path, fs_eng::Palette &palette,
++                               std::unique_ptr<SpriteManager>& atlasOut,
++                               const std::vector<Font*>& fonts) {
++    FILE *fp = fopen(path.c_str(), "rb");
++    if (!fp) {
++        FSERR(Log::k_FLG_GFX, "FontManager", "loadCjkAtlas",
++              ("Cannot open CJK font pack: %s", path.c_str()));
++        return false;
++    }
++
++    char magic[8] = {0};
++    if (fread(magic, 1, 8, fp) != 8) { fclose(fp); return false; }
++
++    // Magic format: "FSCJK16\0" or "FSCJK12\0". Only the digits encode size.
++    int glyphPixSize = 0;
++    if (memcmp(magic, "FSCJK16", 7) == 0) glyphPixSize = 16;
++    else if (memcmp(magic, "FSCJK12", 7) == 0) glyphPixSize = 12;
++    else {
++        FSERR(Log::k_FLG_GFX, "FontManager", "loadCjkAtlas",
++              ("Bad magic in %s", path.c_str()));
++        fclose(fp);
++        return false;
++    }
++
++    uint8_t buf4[4];
++    if (fread(buf4, 1, 4, fp) != 4) { fclose(fp); return false; }
++    uint32_t count = fs_utl::READ_LE_UINT32(buf4);
++    if (count == 0 || count > 65536) { fclose(fp); return false; }
++
++    std::vector<uint32_t> codepoints(count);
++    for (uint32_t i = 0; i < count; ++i) {
++        if (fread(buf4, 1, 4, fp) != 4) { fclose(fp); return false; }
++        codepoints[i] = fs_utl::READ_LE_UINT32(buf4);
++    }
++
++    // 1bpp packed: 2 bytes per row, rows = glyphPixSize (upper bits unused at 12px).
++    const int bytesPerRow = 2;
++    const int packedSize = bytesPerRow * glyphPixSize;
++
++    // Unpack to 8-bit pixels. Foreground -> 252 (palette[252] must be white).
++    // Background -> 255 (transparent).
++    std::vector<std::vector<uint8_t>> pixelStores(count);
++    std::vector<SpriteManager::GlyphBitmap> bitmaps(count);
++    for (uint32_t i = 0; i < count; ++i) {
++        std::vector<uint8_t> packed(packedSize);
++        if (fread(packed.data(), 1, packedSize, fp) != static_cast<size_t>(packedSize)) {
++            fclose(fp);
++            return false;
++        }
++        auto& pix = pixelStores[i];
++        pix.assign(static_cast<size_t>(glyphPixSize) * glyphPixSize, 255);
++        for (int row = 0; row < glyphPixSize; ++row) {
++            uint16_t bits = (uint16_t(packed[row * 2]) << 8) | packed[row * 2 + 1];
++            for (int col = 0; col < glyphPixSize; ++col) {
++                // ttf2fnt packs the leftmost pixel at bit (glyphPixSize-1), not
++                // always bit15: 16px uses bit15, 12px uses bit11. Decode with the
++                // matching alignment or 12px glyphs shift right and clip.
++                if (bits & (1 << (glyphPixSize - 1 - col))) {
++                    pix[row * glyphPixSize + col] = 252; // foreground
++                }
++            }
++        }
++        bitmaps[i] = { glyphPixSize, glyphPixSize, pix.data() };
++    }
++    fclose(fp);
++
++    // Make sure palette index 252 maps to opaque white so colour modulation
++    // produces the intended tints. We touch a copy so we don't pollute the
++    // caller's palette beyond what's needed.
++    fs_eng::Palette cjkPalette = palette;
++    cjkPalette[252] = {254, 254, 254, 255};
++
++    // CJK atlas needs more than the default 512x512 to fit thousands of
++    // glyphs. 2048x2048 holds ~16384 16x16 sprites at native size, with room
++    // for the packer's per-row waste.
++    atlasOut = std::make_unique<SpriteManager>(true, 2048);
++    if (!atlasOut->loadGlyphSprites(bitmaps, cjkPalette)) {
++        atlasOut.reset();
++        FSERR(Log::k_FLG_GFX, "FontManager", "loadCjkAtlas",
++              ("loadGlyphSprites failed for %s", path.c_str()));
++        return false;
++    }
++
++    // Wire each requested font to this atlas and register every glyph.
++    for (Font *f : fonts) {
++        if (!f) continue;
++        f->setCjkSprites(atlasOut.get());
++        for (uint32_t i = 0; i < count; ++i) {
++            f->registerCjkGlyph(codepoints[i], static_cast<int>(i));
++        }
++    }
++
++    LOG(Log::k_FLG_GFX, "FontManager", "loadCjkAtlas",
++        ("Loaded %u CJK glyphs (%dpx) from %s", count, glyphPixSize, path.c_str()));
++    return true;
++}
++
++bool FontManager::loadCjkFont(const std::string& path16, const std::string& path12,
++                              fs_eng::Palette &palette) {
++    // 16px pack: big menu titles/buttons (SIZE_3/SIZE_4) + in-game + intro.
++    if (!loadCjkAtlas(path16, palette, pCjkSprites_,
++                      {menuFonts_[SIZE_3], menuFonts_[SIZE_4],
++                       pGameFont_, pIntroFont_.get()})) {
++        return false;
++    }
++
++    // 12px pack: dense small-text UI (briefings, labels, lists at SIZE_1/SIZE_2)
++    // so the Chinese sits closer to the original Latin font instead of towering
++    // over it.
++    if (!loadCjkAtlas(path12, palette, pCjkSprites12_,
++                      {menuFonts_[SIZE_1], menuFonts_[SIZE_2]})) {
++        // Fall back to the 16px pack for the small sizes so text still renders.
++        FSERR(Log::k_FLG_GFX, "FontManager", "loadCjkFont",
++              ("12px pack %s unavailable; reusing 16px pack for small fonts",
++               path12.c_str()));
++        return loadCjkAtlas(path16, palette, pCjkSprites12_,
++                            {menuFonts_[SIZE_1], menuFonts_[SIZE_2]});
++    }
++    return true;
++}
++
+ MenuFont *FontManager::createMenuFontForSize(SpriteManager *sprites,
+                                              int darkOffset, int lightOffset, char base, const std::string &valid_chars)
+ {
+diff --git a/engine/src/gfx/spritemanager.cpp b/engine/src/gfx/spritemanager.cpp
+index 64836b6..6aedd1e 100644
+--- a/engine/src/gfx/spritemanager.cpp
++++ b/engine/src/gfx/spritemanager.cpp
+@@ -160,9 +160,72 @@ bool SpriteManager::loadSprites(const uint8_t * tabData, const uint8_t * spriteD
+     return res;
+ }
+ 
++bool SpriteManager::loadGlyphSprites(const std::vector<GlyphBitmap>& glyphs, const fs_eng::Palette &palette) {
++    if (glyphs.empty()) return false;
++
++    // Build a sorted entry list mirroring readAndSortTabEntries: tallest first,
++    // then narrowest. That's what the packer expects.
++    std::list<SpriteTabEntry> spriteList;
++    for (size_t i = 0; i < glyphs.size(); ++i) {
++        SpriteTabEntry entry{ i, 0u,
++                              static_cast<uint8_t>(glyphs[i].width),
++                              static_cast<uint8_t>(glyphs[i].height) };
++        auto it = spriteList.begin();
++        for (; it != spriteList.end(); ++it) {
++            if (it->height < entry.height ||
++                (it->height == entry.height && it->width > entry.width)) {
++                break;
++            }
++        }
++        spriteList.insert(it, entry);
++    }
++
++    spriteCount_ = static_cast<int>(glyphs.size());
++    if (sprites_) delete[] sprites_;
++    sprites_ = new Sprite[spriteCount_];
++    uint8_t *spriteBuffer = new uint8_t[textureWidth_ * textureWidth_];
++    memset(spriteBuffer, 255, textureWidth_ * textureWidth_);   // 255 = transparent
++
++    std::stack<SpriteInsert> spriteStack;
++    for (auto entry : spriteList) {
++        Sprite sprite(entry);
++        getInsertPoint(sprite, spriteStack);
++
++        // Copy pixels into the atlas. We bypass Sprite::copyToBuffer because
++        // it expects RLE/raw original-format bytes; we already have decoded
++        // 8-bit pixels in `pixels`.
++        const uint8_t *src = glyphs[entry.spriteId].pixels;
++        Point2D pos = sprite.textureLocation();
++        for (int row = 0; row < sprite.height(); ++row) {
++            uint8_t *dst = spriteBuffer + (pos.y + row) * textureWidth_ + pos.x;
++            memcpy(dst, src + row * sprite.width(), sprite.width());
++        }
++
++        SpriteInsert insert;
++        insert.insertedAt = pos;
++        insert.width = sprite.width();
++        insert.height = sprite.height();
++        spriteStack.push(insert);
++
++        sprites_[entry.spriteId] = sprite;
++    }
++
++    spritesetTexture_ = g_System.createTexture();
++    if (!spritesetTexture_->create8bitsSurfaceFromData(spriteBuffer,
++                                                      textureWidth_,
++                                                      textureWidth_, 255)) {
++        delete[] spriteBuffer;
++        return false;
++    }
++    bool ok = spritesetTexture_->setPalette(palette) &&
++              spritesetTexture_->loadTextureFromSurface();
++    delete[] spriteBuffer;
++    return ok;
++}
++
+ /*!
+  * Read the tab file and sort the different entries by size : bigger height first and then width
+- * @param tabData 
++ * @param tabData
+  * @param spriteList The sorted list of sprite tab entries
+  */
+ void SpriteManager::readAndSortTabEntries(const uint8_t * tabData, std::list<SpriteTabEntry>& spriteList) {
+diff --git a/engine/src/menus/menumanager.cpp b/engine/src/menus/menumanager.cpp
+index 11e2c3a..6258f5d 100644
+--- a/engine/src/menus/menumanager.cpp
++++ b/engine/src/menus/menumanager.cpp
+@@ -154,6 +154,19 @@ void MenuManager::initialize(bool loadIntroFont) {
+     LOG(Log::k_FLG_GFX, "MenuManager", "initialize", ("Loading fonts ..."))
+     fonts_.loadFonts(&menuSprites_, menuPalette_, loadIntroFont);
+ 
++    // If the user picked Chinese, layer the CJK glyph atlas on top of the
++    // ASCII menu fonts. Missing pack -> warn and continue (UI will just show
++    // '?' for non-ASCII codepoints from chinese-tw.lng).
++    if (g_Ctx.currLanguage() == fs_eng::CHINESE_TC) {
++        if (!fonts_.loadCjkFont(
++                fs_utl::File::getFreesyndDataFullPath("fonts/chinese-16.fnt"),
++                fs_utl::File::getFreesyndDataFullPath("fonts/chinese-12.fnt"),
++                menuPalette_)) {
++            LOG(Log::k_FLG_GFX, "MenuManager", "initialize",
++                ("CJK font pack not loaded; Chinese text will render as '?'"))
++        }
++    }
++
+     pBackgroundTexture_ = g_System.createTexture();
+     pBackgroundTexture_->createRenderTargetTexture(fs_eng::kScreenWidth, fs_eng::kScreenHeight);
+ }
+diff --git a/engine/src/menus/widget.cpp b/engine/src/menus/widget.cpp
+index 24e3c5b..3ef1936 100644
+--- a/engine/src/menus/widget.cpp
++++ b/engine/src/menus/widget.cpp
+@@ -374,15 +374,17 @@ void ListBox::draw() {
+     int i=0;
+     for (std::list < std::string >::iterator it = labels_.begin();
+          it != labels_.end(); it++, i++) {
+-             pFont_->drawText(getX(), getY() + i * 12, (*it), focusedLine_ == i);
++             // x2=false: CJK at single size keeps list items compact (12px),
++             // so they fit the narrow box and don't overlap. 14px line pitch.
++             pFont_->drawText(getX(), getY() + i * 14, (*it), focusedLine_ == i, false);
+     }
+ }
+ 
+ void ListBox::handleMouseMotion(Point2D point, [[maybe_unused]] uint32_t state) {
+ 
+     if (pModel_) {
+-        // Gets the line pointed by the mouse
+-        unsigned int i = (point.y - getY()) / 12;
++        // Gets the line pointed by the mouse (must match draw() pitch)
++        unsigned int i = (point.y - getY()) / 14;
+         if (i < pModel_->size()) {
+             if (pModel_->getElement(i)) {
+                 // If line contains something, highlight it
+@@ -452,13 +454,13 @@ void TeamListBox::draw() {
+                      if (squadLines_[ln] ==  i) {
+                         char tmp[5];
+                         sprintf(tmp, "%d", ln+1);
+-                        pFont_->drawText(getX(), yOrigin_ + i * 12, tmp, focusedLine_ == i);
++                        pFont_->drawText(getX(), yOrigin_ + i * 14, tmp, focusedLine_ == i, false);
+                         break;
+                      }
+                  }
+-                 pFont_->drawText(getX() + LINE_OFFSET, yOrigin_ + i * 12, (*it), focusedLine_ == i);
++                 pFont_->drawText(getX() + LINE_OFFSET, yOrigin_ + i * 14, (*it), focusedLine_ == i, false);
+              } else {
+-                 pFont_->drawText(getX() + LINE_OFFSET, yOrigin_ + i * 12, emptyLbl_, focusedLine_ == i);
++                 pFont_->drawText(getX() + LINE_OFFSET, yOrigin_ + i * 14, emptyLbl_, focusedLine_ == i, false);
+              }
+     }
+ }
+@@ -466,8 +468,8 @@ void TeamListBox::draw() {
+ void TeamListBox::handleMouseMotion(Point2D point, [[maybe_unused]] uint32_t state) {
+ 
+     if (pModel_) {
+-        // Gets the line pointed by the mouse
+-        int i = (point.y - yOrigin_) / 12;
++        // Gets the line pointed by the mouse (must match draw() pitch)
++        int i = (point.y - yOrigin_) / 14;
+         if (i >= 0 && i < (int) pModel_->size()) {
+             if (pModel_->getElement(i)) {
+                 // If line contains something, highlight it
+diff --git a/game/menus/briefmenu.cpp b/game/menus/briefmenu.cpp
+index 1b0ad36..530dbe9 100644
+--- a/game/menus/briefmenu.cpp
++++ b/game/menus/briefmenu.cpp
+@@ -36,7 +36,9 @@ using fs_eng::FontManager;
+ const Point2D BriefMenu::kMiniMapScreenPos = {504, 220};
+ const int BriefMenu::kMiniMapWidth = 120;
+ const int BriefMenu::kMiniMapHeight = 120;
+-const int BriefMenu::kMaxLinePerPage = 14;
++// Fewer lines per page than the Latin original: CJK briefing text is drawn at
++// double size (24px), so each line needs ~24px of height.
++const int BriefMenu::kMaxLinePerPage = 10;
+ 
+ #if 0
+ #define EXECUTION_SPEED_TIME
+@@ -184,7 +186,7 @@ void BriefMenu::render_briefing_text() {
+     for (int i = 0; i < kMaxLinePerPage; i++) {
+         getMenuFont(FontManager::SIZE_2)->
+             //drawTextCp437(24, 88 + i * 16, a_page_[i].c_str(), true);
+-            drawText(24, 88 + i * 16, a_page_[i], true);
++            drawText(24, 88 + i * 24, a_page_[i], true);
+     }
+ }
+ 
+diff --git a/game/menus/mapmenu.cpp b/game/menus/mapmenu.cpp
+index 6256629..96201fd 100644
+--- a/game/menus/mapmenu.cpp
++++ b/game/menus/mapmenu.cpp
+@@ -126,18 +126,20 @@ MapMenu::MapMenu(fs_eng::MenuManager * m)
+     // Country name
+     txtCountryId_ = addStatic(188, 312, 270, "", FontManager::SIZE_1,
+         true);
++    // Pop / Tax / Own rows spaced 24px apart so the 12px CJK labels (taller
++    // than the original Latin font this panel was laid out for) don't crowd.
+     // Pop label
+-    addStatic(194, 332, "#MAP_POP", FontManager::SIZE_2, true);
++    addStatic(194, 326, "#MAP_POP", FontManager::SIZE_2, true);
+     // Pop value
+-    txtPopId_ = addStatic(268, 332, "", FontManager::SIZE_1, true);
++    txtPopId_ = addStatic(268, 326, "", FontManager::SIZE_1, true);
+     // Tax label
+-    addStatic(194, 346, "#MAP_TAX", FontManager::SIZE_2, true);
++    addStatic(194, 350, "#MAP_TAX", FontManager::SIZE_2, true);
+     // Tax value
+-    txtTaxValueId_ = addStatic(268, 346, "", FontManager::SIZE_1, true);
++    txtTaxValueId_ = addStatic(268, 350, "", FontManager::SIZE_1, true);
+     // Own label
+-    txtOwnLblId_ = addStatic(194, 360, "#MAP_OWN", FontManager::SIZE_2, true);
++    txtOwnLblId_ = addStatic(194, 374, "#MAP_OWN", FontManager::SIZE_2, true);
+     // Own status
+-    txtOwnId_ = addStatic(268, 360, "", FontManager::SIZE_1, true);
++    txtOwnId_ = addStatic(268, 374, "", FontManager::SIZE_1, true);
+ 
+     txtTimeId_ = addStatic(500, 9, "", FontManager::SIZE_2, true);  // Time
+ 
+diff --git a/kernel/include/fs-kernel/model/missionbriefing.h b/kernel/include/fs-kernel/model/missionbriefing.h
+index d3a2d37..c194aac 100644
+--- a/kernel/include/fs-kernel/model/missionbriefing.h
++++ b/kernel/include/fs-kernel/model/missionbriefing.h
+@@ -53,8 +53,11 @@ class MissionBriefing {
+     /*! class destructor.*/
+     ~MissionBriefing();
+ 
+-    //! Loads briefing from the given file
++    //! Loads briefing from the given file (CP437-encoded, original game format)
+     bool loadBriefing(uint8 * missData, int size);
++    //! Loads briefing from a UTF-8 text file (used by the Chinese language pack).
++    //! Same section layout (`|`-separated, LF folding) but no CP437 transcoding.
++    bool loadBriefingUtf8(uint8 * missData, int size);
+     //! Init the minimap and minimap overlay
+     void init_minimap(Map *p_map, LevelData::LevelDataAll &level_data);
+ 
+diff --git a/kernel/src/mgr/missionmanager.cpp b/kernel/src/mgr/missionmanager.cpp
+index 71ea36e..951bc96 100644
+--- a/kernel/src/mgr/missionmanager.cpp
++++ b/kernel/src/mgr/missionmanager.cpp
+@@ -81,6 +81,7 @@ MissionManager::MissionManager(fs_eng::TileManager *pTileManager) : mapManager_(
+  */
+ MissionBriefing *MissionManager::loadBriefing(int n) {
+     std::string filename;
++    bool useUtf8Path = false;
+     // Briefing file depends on the current language
+     switch(g_Ctx.currLanguage()) {
+         case fs_eng::ENGLISH:
+@@ -95,17 +96,49 @@ MissionBriefing *MissionManager::loadBriefing(int n) {
+         case fs_eng::GERMAN:
+             filename = std::format("miss{}{:02}.dat", "3", n);
+             break;
++        case fs_eng::CHINESE_TC:
++            // UTF-8 text file under freesynd_data_dir, no RNC.
++            filename = std::format("lang/chinese-tw/miss{:02}.txt", n);
++            useUtf8Path = true;
++            break;
+     }
+-    size_t size;
+-    uint8_t *data = fs_utl::File::loadOriginalFile(filename, size);
++
++    size_t size = 0;
++    uint8_t *data = nullptr;
++
++    if (useUtf8Path) {
++        std::string fullPath = fs_utl::File::getFreesyndDataFullPath(filename);
++        FILE *fp = fopen(fullPath.c_str(), "rb");
++        if (fp) {
++            fseek(fp, 0, SEEK_END);
++            long sz = ftell(fp);
++            if (sz > 0) {
++                size = static_cast<size_t>(sz);
++                data = new uint8_t[size + 1];
++                data[size] = 0;
++                fseek(fp, 0, SEEK_SET);
++                if (fread(data, 1, size, fp) != size) {
++                    delete[] data;
++                    data = nullptr;
++                    size = 0;
++                }
++            }
++            fclose(fp);
++        }
++    } else {
++        data = fs_utl::File::loadOriginalFile(filename, size);
++    }
++
+     if (data == NULL) {
+         return NULL;
+     }
+ 
+     // Create Briefing
+     MissionBriefing *p_mb = new MissionBriefing();
+-    // Loads briefing text
+-    if (!p_mb->loadBriefing(data, size)) {
++    bool ok = useUtf8Path
++        ? p_mb->loadBriefingUtf8(data, static_cast<int>(size))
++        : p_mb->loadBriefing(data, static_cast<int>(size));
++    if (!ok) {
+         delete[] data;
+         delete p_mb;
+         return NULL;
+diff --git a/kernel/src/model/missionbriefing.cpp b/kernel/src/model/missionbriefing.cpp
+index 7ad8656..c57071f 100644
+--- a/kernel/src/model/missionbriefing.cpp
++++ b/kernel/src/model/missionbriefing.cpp
+@@ -134,6 +134,106 @@ bool MissionBriefing::loadBriefing(uint8 * data, int size) {
+     return true;
+ }
+ 
++/*!
++ * Load a briefing from a UTF-8 text file (Chinese language pack path).
++ * Same section layout as loadBriefing — six `|`-separated sections, LF folding
++ * — but the prose is appended verbatim (it's already UTF-8) and we skip the
++ * per-byte CP437 → Unicode lookup that would corrupt multi-byte glyphs.
++ *
++ * Comment-only lines (leading '#') and blank lines before the first cost are
++ * skipped so the same file format used by translators (with header notes) just
++ * works.
++ */
++bool MissionBriefing::loadBriefingUtf8(uint8 * data, int size) {
++    char *cur = reinterpret_cast<char *>(data);
++    cur[size - 1] = 0;
++
++    // Skip leading comment ('#...') and blank lines.
++    auto skip_comments = [&]() {
++        while (*cur) {
++            if (*cur == '#') {
++                char *nl = strchr(cur, '\n');
++                if (!nl) { cur += strlen(cur); return; }
++                cur = nl + 1;
++            } else if (*cur == '\n' || *cur == '\r') {
++                cur++;
++            } else {
++                return;
++            }
++        }
++    };
++
++    skip_comments();
++
++    // Section 0: info costs (ASCII integers, LF-separated, terminated by `|`).
++    i_nb_infos_ = 0;
++    while (*cur && *cur != '|') {
++        a_info_costs_[i_nb_infos_++] = atoi(cur);
++        char *nl = strchr(cur, '\n');
++        if (!nl) break;
++        cur = nl + 1;
++    }
++    if (*cur == '|') cur += (cur[1] == '\n' ? 2 : 1);
++
++    // Section 1: enhancement costs.
++    i_nb_enhts_ = 0;
++    while (*cur && *cur != '|') {
++        a_enhts_costs_[i_nb_enhts_++] = atoi(cur);
++        char *nl = strchr(cur, '\n');
++        if (!nl) break;
++        cur = nl + 1;
++    }
++    if (*cur == '|') cur += (cur[1] == '\n' ? 2 : 1);
++
++    // Sections 2..(2 + nb_infos): briefing texts. Already UTF-8.
++    if (cur && *cur) {
++        std::string tmp(cur);
++        size_t start = 0;
++        for (int i = 0; i < i_nb_infos_ + 1; i++) {
++            std::string section;
++            std::size_t idx = tmp.find('|', start);
++            if (idx != std::string::npos) {
++                section.assign(tmp.substr(start, idx - start));
++                start = idx + ((idx + 1 < tmp.size() && tmp[idx + 1] == '\n') ? 2 : 1);
++            } else {
++                section.assign(tmp.substr(start));
++            }
++
++            if (i_nb_infos_ >= 1) {
++                utf8::append(0x000A, a_briefing_[i]);
++            }
++
++            // Mirror the LF-folding behaviour of the original CP437 path:
++            // single LF -> space, two-or-more LF -> paragraph break. We walk
++            // codepoints, not bytes, so multibyte UTF-8 sequences stay intact.
++            int nbLF = 0;
++            auto b = section.begin();
++            auto e = section.end();
++            while (b != e) {
++                try {
++                    utf8::utfchar32_t cp = utf8::next(b, e);
++                    if (cp == 0x000A) {
++                        nbLF += 1;
++                        continue;
++                    }
++                    if (nbLF > 1) {
++                        utf8::append(0x000A, a_briefing_[i]);
++                        utf8::append(0x000A, a_briefing_[i]);
++                    } else if (nbLF == 1) {
++                        utf8::append(0x0020, a_briefing_[i]);
++                    }
++                    nbLF = 0;
++                    utf8::append(cp, a_briefing_[i]);
++                } catch (const utf8::invalid_utf8&) {
++                    continue;
++                }
++            }
++        }
++    }
++
++    return true;
++}
++
+ /*!
+  * This method creates the minimap from the given map.
+  * Then it creates a minimap overlay that tells for each tile
+diff --git a/kernel/test/CMakeLists.txt b/kernel/test/CMakeLists.txt
+index 4c7ea66..e255b91 100644
+--- a/kernel/test/CMakeLists.txt
++++ b/kernel/test/CMakeLists.txt
+@@ -27,7 +27,8 @@ add_executable(test-kernel
+     pedtest.cpp
+     pedactiontest.cpp
+     missiontest.cpp
+-    timetest.cpp)
++    timetest.cpp
++    briefingutf8test.cpp)
+ 
+ target_link_libraries(test-kernel PRIVATE Catch2::Catch2WithMain Freesynd::Kernel Freesynd::Utils Freesynd::Engine)
+ 
+diff --git a/kernel/test/briefingutf8test.cpp b/kernel/test/briefingutf8test.cpp
+new file mode 100644
+index 0000000..db2c714
+--- /dev/null
++++ b/kernel/test/briefingutf8test.cpp
+@@ -0,0 +1,145 @@
++/*
++ *  FreeSynd Chinese localization tests.
++ *
++ *  Verifies the UTF-8 briefing loader added for the CHINESE_TC language pack:
++ *  same `|`-separated section layout as the original CP437 path, but no per-
++ *  byte CP437 → Unicode transcoding (so multi-byte UTF-8 sequences survive).
++ */
++#include <catch2/catch_test_macros.hpp>
++
++#include <cstring>
++#include <string>
++
++#include "fs-kernel/model/missionbriefing.h"
++
++TEST_CASE("loadBriefingUtf8 parses costs and preserves UTF-8 prose", "[briefing][cjk]") {
++    // Minimal template matching the layout extract_briefings.py emits:
++    //   header comments (skipped), then 6 sections separated by `|`.
++    //   Sections 0/1 are integer costs, sections 2..5 are prose.
++    const char *src =
++        "# header comment line\n"
++        "\n"
++        "100\n"
++        "200\n"
++        "400\n"
++        "|\n"
++        "100\n"
++        "200\n"
++        "400\n"
++        "|\n"
++        "傭兵營區。\n暗殺：上校。\n"
++        "|\n"
++        "防禦更新：\n敵情報告顯示...\n"
++        "|\n"
++        "目標更新：\n上校位置已確認。\n"
++        "|\n"
++        "戰術建議：\n單一幹員即可完成此任務。\n";
++
++    // The loader writes a terminating NUL at data[size-1]; allocate +1 and copy.
++    std::string buf(src);
++    fs_knl::MissionBriefing brief;
++    REQUIRE(brief.loadBriefingUtf8(reinterpret_cast<uint8_t *>(buf.data()),
++                                   static_cast<int>(buf.size() + 1)) == true);
++
++    SECTION("info and enhancement counts match the integer-cost sections") {
++        REQUIRE(brief.nb_infos() == 3);
++        REQUIRE(brief.nb_enhts() == 3);
++        REQUIRE(brief.infoCost(0) == 100);
++        REQUIRE(brief.infoCost(1) == 200);
++        REQUIRE(brief.infoCost(2) == 400);
++        REQUIRE(brief.enhanceCost(0) == 100);
++        REQUIRE(brief.enhanceCost(1) == 200);
++        REQUIRE(brief.enhanceCost(2) == 400);
++    }
++
++    SECTION("default briefing keeps the original UTF-8 bytes (no '?' fallback)") {
++        const char *txt = brief.briefing(0);
++        REQUIRE(txt != nullptr);
++        // "傭" is U+50AD, UTF-8 E5 82 AD. A round-trip through cp437ToUnicode
++        // would smash these bytes to '?' (or worse). Detect by substring.
++        REQUIRE(std::string(txt).find("傭兵") != std::string::npos);
++    }
++
++    SECTION("each info-level briefing pulls from its own section") {
++        REQUIRE(std::string(brief.briefing(1)).find("防禦") != std::string::npos);
++        REQUIRE(std::string(brief.briefing(2)).find("目標") != std::string::npos);
++        REQUIRE(std::string(brief.briefing(3)).find("戰術") != std::string::npos);
++    }
++}
++
++// End-to-end check: load the actual shipped Chinese miss01 translation
++// straight off disk. Exercises the full path the engine takes when
++// MissionManager::loadBriefing routes CHINESE_TC through loadBriefingUtf8,
++// minus the missionmanager file-IO wrapper.
++TEST_CASE("loadBriefingUtf8 reads the shipped miss01.txt translation", "[briefing][cjk]") {
++    // CMake test runs from the build dir; the data files sit alongside the
++    // freesynd source tree. Try a few sensible relatives so the test isn't
++    // brittle to the cwd the runner picks.
++    const char *candidates[] = {
++        "data/lang/chinese-tw/miss01.txt",                       // run from repo root
++        "../../data/lang/chinese-tw/miss01.txt",                 // common build/* layout
++        "../../../data/lang/chinese-tw/miss01.txt",
++        "../../../../data/lang/chinese-tw/miss01.txt",
++    };
++    FILE *fp = nullptr;
++    for (const char *p : candidates) {
++        fp = fopen(p, "rb");
++        if (fp) break;
++    }
++    if (!fp) {
++        WARN("skip: cannot locate data/lang/chinese-tw/miss01.txt from cwd");
++        return;
++    }
++    fseek(fp, 0, SEEK_END);
++    size_t sz = static_cast<size_t>(ftell(fp));
++    fseek(fp, 0, SEEK_SET);
++    std::string buf(sz + 1, '\0');
++    REQUIRE(fread(buf.data(), 1, sz, fp) == sz);
++    fclose(fp);
++
++    fs_knl::MissionBriefing brief;
++    REQUIRE(brief.loadBriefingUtf8(
++                reinterpret_cast<uint8_t *>(buf.data()),
++                static_cast<int>(buf.size())) == true);
++
++    // miss01 ships three info costs (100/200/400) and three enh costs
++    // (100/200O/400 — the literal 'O' sentinel comes verbatim from the
++    // original game's MISS01.DAT and must survive the cost parser).
++    REQUIRE(brief.nb_infos() == 3);
++    REQUIRE(brief.nb_enhts() == 3);
++    REQUIRE(brief.infoCost(0) == 100);
++    REQUIRE(brief.infoCost(1) == 200);
++    REQUIRE(brief.infoCost(2) == 400);
++
++    // The default briefing carries the translated mission-2 prose and must
++    // survive the multi-byte UTF-8 path without being mangled by CP437
++    // transcoding. "傭兵營區" only appears in section 2.
++    std::string defBrief = brief.briefing(0);
++    REQUIRE(defBrief.find("傭兵營區") != std::string::npos);
++
++    // Each info level lands in its own slot: 防禦情報 / 目標情報 / 戰術建議.
++    REQUIRE(std::string(brief.briefing(1)).find("防禦") != std::string::npos);
++    REQUIRE(std::string(brief.briefing(2)).find("目標") != std::string::npos);
++    REQUIRE(std::string(brief.briefing(3)).find("戰術") != std::string::npos);
++}
++
++TEST_CASE("loadBriefingUtf8 skips leading comment/blank lines", "[briefing][cjk]") {
++    const char *src =
++        "# Briefing template for MISS01.DAT\n"
++        "# UTF-8 plain text.\n"
++        "\n"
++        "100\n"
++        "|\n"
++        "100\n"
++        "|\n"
++        "預設簡報。\n"
++        "|\n"
++        "情報一。\n";
++    std::string buf(src);
++    fs_knl::MissionBriefing brief;
++    REQUIRE(brief.loadBriefingUtf8(reinterpret_cast<uint8_t *>(buf.data()),
++                                   static_cast<int>(buf.size() + 1)) == true);
++    REQUIRE(brief.nb_infos() == 1);
++    REQUIRE(brief.infoCost(0) == 100);
++    REQUIRE(std::string(brief.briefing(0)).find("預設") != std::string::npos);
++}

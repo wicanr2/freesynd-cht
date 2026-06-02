@@ -25,7 +25,8 @@
 
 ### 你需要準備
 1. **你自己的正版 Syndicate (1993)** — `Synd_1993.zip` 解壓出的 `MISS01.DAT`…`MISS50.DAT` 等原始檔。
-2. **支援 `CHINESE_TC` 的 FreeSynd 建置** — 含繁中引擎修改（字型 CJK 分流、UTF-8 簡報 loader、IME）。本紀錄的引擎側修改與兩個畫面版本（640×480 銳利 / 1024×768 平滑）見作者的 FreeSynd fork。
+2. **支援 `CHINESE_TC` 的 FreeSynd 建置** — 含繁中引擎修改（字型 CJK 分流、UTF-8 簡報 loader、IME）。
+   引擎修改以 GPL patch 形式收錄於 [`patches/`](patches/)（核心繁中化 + 兩個畫面版本：640×480 銳利 / 1024×768 平滑），套用方式見 [`patches/README.md`](patches/README.md)。
 
 ### 三步套用
 ```bash
