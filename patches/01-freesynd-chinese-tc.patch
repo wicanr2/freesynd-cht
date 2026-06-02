@@ -660,6 +660,95 @@ index 6256629..96201fd 100644
  
      txtTimeId_ = addStatic(500, 9, "", FontManager::SIZE_2, true);  // Time
  
+diff --git a/game/menus/selectmenu.cpp b/game/menus/selectmenu.cpp
+index 31d5129..c06bae1 100644
+--- a/game/menus/selectmenu.cpp
++++ b/game/menus/selectmenu.cpp
+@@ -280,37 +280,42 @@ void SelectMenu::drawSelectedWeaponInfos(int x, int y) {
+     // Draw the selected weapon big icon
+     menuSprites().drawSprite(pSelectedWeap_->getBigIconId(), 502, 106, false, true);
+ 
++    // CJK build: draw weapon info at single size with a 14px line pitch, to
++    // match the weapons ListBox. MenuFont::drawText(x,y,text,lighted,x2=true)
++    // defaults x2 to TRUE, and SIZE_1 CJK glyphs are already 12px, so the
++    // original 4-arg call rendered them at 24px and overlapped on a 12px pitch.
++    // Pass x2=false EXPLICITLY (keep lighted=true) so each line is 12px.
+     const int shifted_x = x + 52;
+-    getMenuFont(FontManager::SIZE_1)->drawText(x, y, pSelectedWeap_->getName(), true);
+-    y += 12;
++    getMenuFont(FontManager::SIZE_1)->drawText(x, y, pSelectedWeap_->getName(), true, false);
++    y += 14;
+     sprintf(tmp, ":%d", pSelectedWeap_->cost());
+     getMenuFont(FontManager::SIZE_1)->drawText(x, y,
+-        getMessage("SELECT_WPN_COST").c_str(), true);
+-    getMenuFont(FontManager::SIZE_1)->drawText(shifted_x, y, tmp, true);
+-    y += 12;
++        getMessage("SELECT_WPN_COST").c_str(), true, false);
++    getMenuFont(FontManager::SIZE_1)->drawText(shifted_x, y, tmp, true, false);
++    y += 14;
+ 
+     if (pSelectedWeap_->usesAmmo()) {
+         sprintf(tmp, ":%d", pSelectedWeap_->ammoCapacity());
+         getMenuFont(FontManager::SIZE_1)->drawText(x, y,
+-            getMessage("SELECT_WPN_AMMO").c_str(), true);
+-        getMenuFont(FontManager::SIZE_1)->drawText(shifted_x, y, tmp, true);
+-        y += 12;
++            getMessage("SELECT_WPN_AMMO").c_str(), true, false);
++        getMenuFont(FontManager::SIZE_1)->drawText(shifted_x, y, tmp, true, false);
++        y += 14;
+     }
+ 
+     if (pSelectedWeap_->range() > 0) {
+         sprintf(tmp, ":%d", pSelectedWeap_->range());
+         getMenuFont(FontManager::SIZE_1)->drawText(x, y,
+-            getMessage("SELECT_WPN_RANGE").c_str(), true);
+-        getMenuFont(FontManager::SIZE_1)->drawText(shifted_x, y, tmp, true);
+-        y += 12;
++            getMessage("SELECT_WPN_RANGE").c_str(), true, false);
++        getMenuFont(FontManager::SIZE_1)->drawText(shifted_x, y, tmp, true, false);
++        y += 14;
+     }
+ 
+     if (pSelectedWeap_->usesAmmo()) {
+         sprintf(tmp, ":%d", pSelectedWeap_->ammoCost());
+         getMenuFont(FontManager::SIZE_1)->drawText(x, y,
+-            getMessage("SELECT_WPN_SHOT").c_str(), true);
+-        getMenuFont(FontManager::SIZE_1)->drawText(shifted_x, y, tmp, true);
+-        y += 12;
++            getMessage("SELECT_WPN_SHOT").c_str(), true, false);
++        getMenuFont(FontManager::SIZE_1)->drawText(shifted_x, y, tmp, true, false);
++        y += 14;
+     }
+ 
+     if (pSelectedWInstance_ != nullptr && g_gameCtrl.weaponManager().isAvailable(pSelectedWeap_)) {
+@@ -319,9 +324,9 @@ void SelectMenu::drawSelectedWeaponInfos(int x, int y) {
+ 
+             sprintf(tmp, ":%d", rldCost);
+             getMenuFont(FontManager::SIZE_1)->drawText(x, y,
+-                getMessage("SELECT_WPN_RELOAD").c_str(), true);
+-            getMenuFont(FontManager::SIZE_1)->drawText(shifted_x, y, tmp, true);
+-            y += 12;
++                getMessage("SELECT_WPN_RELOAD").c_str(), true, false);
++            getMenuFont(FontManager::SIZE_1)->drawText(shifted_x, y, tmp, true, false);
++            y += 14;
+         }
+     }
+ }
+@@ -333,11 +338,11 @@ void SelectMenu::drawSelectedModInfos(int x, int y)
+     g_System.drawRect({502, 292}, 124, 2, menu_manager_->kMenuColorDarkGreen);
+     g_System.drawRect({502, 318}, 124, 2, menu_manager_->kMenuColorDarkGreen);
+ 
+-    getMenuFont(FontManager::SIZE_1)->drawText(x, y, pSelectedMod_->getName(), true);
++    getMenuFont(FontManager::SIZE_1)->drawText(x, y, pSelectedMod_->getName(), true, false);
+     char tmp[100];
+     sprintf(tmp, "COST   :%d", pSelectedMod_->cost());
+-    getMenuFont(FontManager::SIZE_1)->drawText(504, y + 14, tmp, true);
+-    getMenuFont(FontManager::SIZE_1)->drawText(504, y + 28, pSelectedMod_->desc(), true);
++    getMenuFont(FontManager::SIZE_1)->drawText(504, y + 14, tmp, true, false);
++    getMenuFont(FontManager::SIZE_1)->drawText(504, y + 28, pSelectedMod_->desc(), true, false);
+ }
+ 
+ bool SelectMenu::handleBeforeShow() {
 diff --git a/kernel/include/fs-kernel/model/missionbriefing.h b/kernel/include/fs-kernel/model/missionbriefing.h
 index d3a2d37..c194aac 100644
 --- a/kernel/include/fs-kernel/model/missionbriefing.h
@@ -870,7 +959,7 @@ index 4c7ea66..e255b91 100644
  
 diff --git a/kernel/test/briefingutf8test.cpp b/kernel/test/briefingutf8test.cpp
 new file mode 100644
-index 0000000..db2c714
+index 0000000..8dcc71f
 --- /dev/null
 +++ b/kernel/test/briefingutf8test.cpp
 @@ -0,0 +1,145 @@
