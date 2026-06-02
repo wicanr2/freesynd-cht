@@ -1,0 +1,28 @@
+# --- Original Syndicate (1993) game data — EA copyright. ---
+# Players supply their own legal Synd_1993 copy; it is NEVER committed here.
+/synd-data/
+synd-data
+*.DAT
+
+# --- Applied playable briefings — regenerated locally from YOUR own data ---
+# via tools/apply_public.py. Not committed (they embed the original cost data).
+/data/lang/chinese-tw/
+
+# --- Any dump containing the original English prose — never commit. ---
+/dumps/
+*-english*
+*_en.*
+
+# --- Build artifacts / distribution packages (bundle the game data). ---
+/build*/
+/dist/
+*.AppImage
+*.zip
+*.tar.gz
+
+# Editor / OS cruft
+.DS_Store
+/.idea/
+/.vscode/
+__pycache__/
+*.pyc

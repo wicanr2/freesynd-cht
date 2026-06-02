@@ -1,0 +1,315 @@
+INTRO_0=城市名稱：新海森邦 歐洲
+INTRO_1=日期：1/85 新紀 (新曆)
+INTRO_2=時間：18:20
+INTRO_3=招募部門需要新對象
+INTRO_4=已定位潛在對象
+INTRO_5=對象資料：男性
+INTRO_6=對象資料：身高 1.85 公尺
+INTRO_7=對象資料：體重 70 公斤
+INTRO_8=對象已接受
+INTRO_9=取得對象
+INTRO_10=返回總部
+INTRO_11=為對象準備生物基因工程
+INTRO_12=達文西裝置啟動
+INTRO_13=製作替換肢體
+INTRO_14=手術完成
+INTRO_15=套用多型橡膠外皮
+INTRO_16=系統檢測
+INTRO_17=準備執行任務
+INTRO_18=任務開始
+
+MENU_MAIN_BUT = 選單(&M)
+MENU_ACC_BUT=接受(&A)
+MENU_CANCEL_BUT=取消
+MENU_LB_EMPTY=空
+MENU_MODS_BUT=強化
+MENU_EQUIP_BUT=裝備
+
+MAIN_TITLE = 主選單
+MAIN_CONF = 公司設定
+MAIN_BEGIN = 開始任務
+MAIN_LOAD_SAVE = 載入與儲存
+MAIN_RESET = 重新開始
+MAIN_QUIT = 退出遊戲
+
+CONF_MAIN_MSG=選擇欲變更的選項
+CONF_COL_LOGO_BUT=顏色與標誌
+CONF_COL_LOGO_MSG=變更顏色與標誌
+CONF_COL_TITLE=顏色
+CONF_LOGO_TITLE=標誌
+CONF_COM_NAME_BUT=公司名稱
+CONF_COM_NAME_MSG=變更公司名稱
+CONF_YOUR_NAME_BUT=玩家名稱
+CONF_YOUR_NAME_MSG=輸入玩家名稱
+CONF_OK_BUT=確定
+
+MAP_BRIEF_BUT =簡報(&B)
+MAP_POP = 人口
+MAP_TAX = 稅
+MAP_TAX_UNKWN = 未知
+MAP_OWN = 擁有
+MAP_STAT = 狀態
+MAP_STAT_VHAPPY = 非常滿意
+MAP_STAT_HAPPY = 滿意
+MAP_STAT_CTNT = 普通
+MAP_STAT_UNHAPPY = 不滿
+MAP_STAT_DISCTNT = 不悅
+MAP_STAT_REBEL = 反叛
+
+CNTRY_01=西歐
+CNTRY_02=遠東
+CNTRY_03=蒙古
+CNTRY_04=伊朗
+CNTRY_05=加州
+CNTRY_06=伊拉克
+CNTRY_07=印度
+CNTRY_08=東北領地
+CNTRY_09=哈薩克
+CNTRY_10=東歐
+CNTRY_11=西澳
+CNTRY_12=堪察加
+CNTRY_13=莫三比克
+CNTRY_14=秘魯
+CNTRY_15=中歐
+CNTRY_16=格陵蘭
+CNTRY_17=阿拉斯加
+CNTRY_18=烏拉爾
+CNTRY_19=北方領地
+CNTRY_20=斯堪地那維亞
+CNTRY_21=育空
+CNTRY_22=西伯利亞
+CNTRY_23=洛磯山
+CNTRY_24=美國南部
+CNTRY_25=印尼
+CNTRY_26=墨西哥
+CNTRY_27=薩伊
+CNTRY_28=阿爾及利亞
+CNTRY_29=新英格蘭
+CNTRY_30=阿根廷
+CNTRY_31=南非
+CNTRY_32=科羅拉多
+CNTRY_33=蘇丹
+CNTRY_34=中西部
+CNTRY_35=利比亞
+CNTRY_36=委內瑞拉
+CNTRY_37=大西洋加速器
+CNTRY_38=阿拉伯
+CNTRY_39=西北領地
+CNTRY_40=肯亞
+CNTRY_41=茅利塔尼亞
+CNTRY_42=紐芬蘭
+CNTRY_43=新南威爾斯
+CNTRY_44=哥倫比亞
+CNTRY_45=奈及利亞
+CNTRY_46=巴西
+CNTRY_47=烏拉圭
+CNTRY_48=環太平洋
+CNTRY_49=巴拉圭
+CNTRY_50=中國
+
+LDGAME_TITLE=載入遊戲中
+
+BRIEF_TITLE=任務簡報
+BRIEF_INFO=情報
+BRIEF_ENH=增強
+BRIEF_MAP=地圖
+
+SELECT_TITLE=隊伍選擇
+SELECT_CRYO_TITLE=低溫艙
+SELECT_SUBTITLE=特務幹員 %s
+SELECT_RES_BUT=研究
+SELECT_TEAM_BUT=隊伍
+SELECT_RELOAD_BUT=重新裝填
+SELECT_BUY_BUT=購買
+SELECT_SELL_BUT=賣出
+SELECT_WPN_COST=費用
+SELECT_WPN_AMMO=彈藥
+SELECT_WPN_RANGE=射程
+SELECT_WPN_SHOT=射擊
+SELECT_WPN_RELOAD=裝填
+
+RES_TITLE=研究
+RES_RES_BUT=研究
+RES_MIN_FUND_LBL=最低經費
+RES_MAX_FUND_LBL=最高經費
+RES_INC_FUND_BUT=經費+
+RES_DEC_FUND_BUT=經費-
+RES_GRAP_TITLE=研究中：%s
+
+DEBRIEF_TITLE=任務檢討
+DEBRIEF_SUBTITLE=任務統計
+DEBRIEF_STATUS=任務狀態：
+DEBRIEF_AGENTS=已派幹員：
+DEBRIEF_NEW_AGENT=新增幹員：
+DEBRIEF_TIME=任務耗時：
+DEBRIEF_TIME_FORMAT=%02d 小時 %d 天
+DEBRIEF_AGT_KILLED=擊殺敵方幹員：
+DEBRIEF_CRIM_KILLED=擊殺罪犯：
+DEBRIEF_CIV_KILLED=誤殺平民：
+DEBRIEF_POL_KILLED=擊殺警察：
+DEBRIEF_GUARD_KILLED=擊殺守衛：
+DEBRIEF_PERSUADED=已說服人員：
+DEBRIEF_HIT=命中率：
+DEBRIEF_NO_BULLET=未發射子彈
+DEBRIEF_MIS_FAILED=失敗
+DEBRIEF_MIS_COMP=完成
+DEBRIEF_MIS_ABORT=任務撤退
+DEBRIEF_SEARCH=已完成 %s 研究
+DEBRIEF_WEAP_FOUND1=已發現新武器
+DEBRIEF_WEAP_FOUND2=已提交至研究部門
+
+LS_TITLE=載入/儲存
+LS_LOAD_BUT=載入
+LS_SAVE_BUT=儲存
+
+LGOUT_TITLE=登出中
+
+MOD_LEGS_V1 = 腿部 V1
+MOD_LEGS_V1_DESC = 替換式金屬腿。
+		伺服輔助液壓
+		系統可加快
+		移動速度。
+MOD_LEGS_V2 = 腿部 V2
+MOD_LEGS_V2_DESC = 塑鋼腿。
+		比金屬腿更輕
+		更堅固。
+		強化液壓
+		系統與平衡
+		控制。
+MOD_LEGS_V3 = 腿部 V3
+MOD_LEGS_V3_DESC = 電子網格腿。
+		塑鋼核心配合
+		人造肌肉纖維。
+		極佳的反應與
+		平衡並結合
+		高速移動。
+MOD_ARMS_V1 = 手臂 V1
+MOD_ARMS_V1_DESC = 替換式金屬手臂。
+		伺服輔助液壓
+		系統可攜帶
+		更重物品。
+MOD_ARMS_V2 = 手臂 V2
+MOD_ARMS_V2_DESC = 塑鋼手臂。
+		比金屬手臂更輕
+		更堅固。
+		強化液壓
+		系統與壓力
+		控制。
+MOD_ARMS_V3 = 手臂 V3
+MOD_ARMS_V3_DESC = 電子網格手臂。
+		塑鋼核心配合
+		人造肌肉纖維。
+		優異的觸覺
+		控制與承重
+		能力。
+MOD_CHEST_V1 = 胸部 V1
+MOD_CHEST_V1_DESC = 金屬胸甲。
+		所有內臟
+		受重金屬
+		外殼保護。
+MOD_CHEST_V2 = 胸部 V2
+MOD_CHEST_V2_DESC = 塑鋼胸甲。
+		比金屬版更輕
+		更堅固且
+		行動性更佳。
+MOD_CHEST_V3 = 胸部 V3
+MOD_CHEST_V3_DESC = 電子網格胸甲
+		附動力護盾。
+		所有內臟受
+		低功率力場
+		產生器保護。
+MOD_HEART_V1 = 心臟 V1
+MOD_HEART_V1_DESC = 心律調整器。
+		監控並維持
+		個體心率。
+MOD_HEART_V2 = 心臟 V2
+MOD_HEART_V2_DESC = 心律加速器
+		與監測。
+		心率近乎加倍
+		以加速荷爾蒙
+		分泌。
+MOD_HEART_V3 = 心臟 V3
+MOD_HEART_V3_DESC = 電子化心臟。
+		強力幫浦內建
+		系統分析與
+		覆寫功能。
+		三倍於標準
+		人類心臟
+		輸出量。
+MOD_EYES_V1 = 眼部 V1
+MOD_EYES_V1_DESC = 視覺增強器
+		附限制式
+		變焦功能。
+		即使夜間也能
+		近乎完美視力。
+MOD_EYES_V2 = 眼部 V2
+MOD_EYES_V2_DESC = V1 強化版
+		整合目標鎖定
+		功能與測距儀。
+MOD_EYES_V3 = 眼部 V3
+MOD_EYES_V3_DESC = 最新神經電子
+		植入物。配合
+		鎖定器、測距儀
+		與威脅辨識器
+		提供完美
+		夜視能力。
+MOD_BRAIN_V1 = 大腦 V1
+MOD_BRAIN_V1_DESC = 神經增強器
+		可加快腦幹
+		反應時間。
+MOD_BRAIN_V2 = 大腦 V2
+MOD_BRAIN_V2_DESC = 神經中樞裝置
+		可接管多數
+		低階功能，
+		使大腦專注於
+		高階決策。
+MOD_BRAIN_V3 = 大腦 V3
+MOD_BRAIN_V3_DESC = 腦力倍增器
+		連線至運算
+		網路，可存取
+		大量戰術情報。
+		改自軍用版本。
+
+RESEARCH_AUTOMATIC = 自動
+RESEARCH_HEAVY = 重型
+RESEARCH_ASSAULT = 突擊
+RESEARCH_MISC = 雜項
+
+WEAPON_PERSUADERTRON = 勸服器
+WEAPON_PISTOL = 手槍
+WEAPON_MINI_GUN = 迷你機槍
+WEAPON_FLAMER = 火焰噴射器
+WEAPON_LONG_RANGE = 長距離槍
+WEAPON_ENERGY_SHIELD = 能量護盾
+WEAPON_UZI = 烏茲衝鋒槍
+WEAPON_LASER = 雷射
+WEAPON_GAUSS_GUN = 高斯槍
+WEAPON_SHOTGUN = 散彈槍
+WEAPON_MEDIKIT = 醫療包
+WEAPON_SCANNER = 掃描器
+WEAPON_ACCESS_CARD = 門禁卡
+WEAPON_TIME_BOMB = 定時炸彈
+
+GOAL_PERSUADE = 說服
+GOAL_ASSASSINATE = 暗殺
+GOAL_PROTECT = 保護
+GOAL_TAKE_WEAPON = 取得武器
+GOAL_ELIMINATE_POLICE = 消滅警察
+GOAL_ELIMINATE_AGENTS = 消滅幹員
+GOAL_DESTROY_VEHICLE = 摧毀載具
+GOAL_USE_VEHICLE = 使用載具
+GOAL_EVACUATE = 撤離
+
+HINT_GOING = 移動中
+HINT_OBSERVING = 觀察中
+HINT_PICKUP_WEAPON = 拾取武器
+HINT_HIT_BY_BULLET = 中彈
+HINT_MISSION_FAILED = 任務失敗
+HINT_MISSION_COMPLETE = 任務完成
+HINT_PRESS_SPACE = 按空白鍵
+HINT_FOLLOW = 跟隨
+HINT_HIT_BY_CAR = 被車撞
+HINT_ON_FIRE = 著火
+HINT_DROP_WEAPON = 丟下武器
+
+GAME_PAUSED = 遊戲暫停

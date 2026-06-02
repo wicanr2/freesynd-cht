@@ -1,0 +1,19 @@
+{
+ "_meta": {
+  "mission": 50,
+  "game": "Syndicate (1993)",
+  "sections": 2
+ },
+ "translations": [
+  {
+   "hash": "4f7a4dd9f3bc427c",
+   "zh": "肅清。\n\n戰鬥掃蕩。\n\n鄰近城市已被敵方財團的渣滓\n盤據。他們的存在被視為有礙\n觀瞻，你的小隊要把他們從這個\n世界的表面徹底抹除。",
+   "note": "default briefing"
+  },
+  {
+   "hash": "1179f6ebfe4880aa",
+   "zh": "戰術建議：\n\n這一仗不必講究手段。給你的\n弟兄們配上自動武器，狠狠\n痛擊一番。以有條不紊的方式\n掃蕩整座城市，別放過任何一名\n幹員。",
+   "note": "info level 1"
+  }
+ ]
+}
