@@ -143,10 +143,23 @@ index 6258f5d..bc042f0 100644
  
  /*!
 diff --git a/game/menus/briefmenu.cpp b/game/menus/briefmenu.cpp
-index 530dbe9..c445e32 100644
+index 530dbe9..82e9099 100644
 --- a/game/menus/briefmenu.cpp
 +++ b/game/menus/briefmenu.cpp
-@@ -186,7 +186,7 @@ void BriefMenu::render_briefing_text() {
+@@ -45,7 +45,11 @@ const int BriefMenu::kMaxLinePerPage = 10;
+ #endif
+ BriefMenu::BriefMenu(fs_eng::MenuManager * m)
+         : fs_eng::Menu(m, fs_game_menus::kMenuIdBrief, fs_game_menus::kMenuIdMap, true),
+-          start_line_(0), p_briefing_(NULL), mm_renderer_(kMiniMapScreenPos) {
++          start_line_(0), p_briefing_(NULL),
++          // HD: kMiniMapScreenPos is a legacy 640x400 coord. Every other widget
++          // is repositioned with mapY() for the 480-tall canvas, but the minimap
++          // was not — leaving it ~44px too high, on top of the 增強 button. Map it.
++          mm_renderer_(Point2D{kMiniMapScreenPos.x, mapY(kMiniMapScreenPos.y)}) {
+     cursorOnShow_ = kMenuCursor;
+     
+     addStatic(85, 35, 545, "#BRIEF_TITLE", FontManager::SIZE_4, false);
+@@ -186,7 +190,7 @@ void BriefMenu::render_briefing_text() {
      for (int i = 0; i < kMaxLinePerPage; i++) {
          getMenuFont(FontManager::SIZE_2)->
              //drawTextCp437(24, 88 + i * 16, a_page_[i].c_str(), true);
@@ -154,4 +167,30 @@ index 530dbe9..c445e32 100644
 +            drawText(24, mapY(88 + i * 24), a_page_[i], true);
      }
  }
+ 
+@@ -367,18 +371,22 @@ void BriefMenu::handleAction(const ActionDesc &action) {
+  * \return True if the user clicked on the minimap so event is consumed
+  */
+ bool BriefMenu::handleMouseDown(Point2D point, int button) {
++    // Mouse points arrive in 480-tall canvas space, so the minimap hit-region
++    // must use the mapY()-mapped top (matching where it is now drawn), not the
++    // raw legacy y. Scroll quadrants are offsets within the fixed-size box.
++    int mmY = mapY(kMiniMapScreenPos.y);
+     if (button == 1 && point.x >= kMiniMapScreenPos.x
+         && point.x < (kMiniMapScreenPos.x + kMiniMapWidth)
+-        && point.y >= kMiniMapScreenPos.y && point.y < (kMiniMapScreenPos.y + kMiniMapHeight)) {
++        && point.y >= mmY && point.y < (mmY + kMiniMapHeight)) {
+         if (point.x >= kMiniMapScreenPos.x && point.x < 544) {
+             mm_renderer_.scrollLeft();
+         } else if (point.x >= 584 && point.x < 624) {
+              mm_renderer_.scrollRight();
+         }
+ 
+-        if (point.y >= kMiniMapScreenPos.y && point.y < 260) {
++        if (point.y >= mmY && point.y < mmY + 40) {
+              mm_renderer_.scrollUp();
+-        } else if (point.y >= 300 && point.y < 340) {
++        } else if (point.y >= mmY + 80 && point.y < mmY + 120) {
+              mm_renderer_.scrollDown();
+         }
  

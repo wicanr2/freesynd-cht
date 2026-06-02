@@ -168,6 +168,31 @@ index 22afb31..b02d2ef 100644
      //! Returns true if this manager has loaded files
      bool loaded() { return spriteCount_ != 0; }
      //! Returns the number of loaded sprites
+diff --git a/engine/include/fs-engine/menus/widget.h b/engine/include/fs-engine/menus/widget.h
+index 79ba67c..fdef10c 100644
+--- a/engine/include/fs-engine/menus/widget.h
++++ b/engine/include/fs-engine/menus/widget.h
+@@ -155,6 +155,11 @@ public:
+     void setHighlighted(bool highlighted);
+     bool isHighlighted() const { return highlighted_; }
+ 
++    /*! Single size (x2=false) keeps CJK SIZE_1 statics at their native 12px
++     * instead of the default doubled 24px, so tight info/fund panels that were
++     * laid out for ~12px Latin text don't overlap. */
++    void setDoubleSize(bool doubleSize) { doubleSize_ = doubleSize; }
++
+     /*! Returns the font size. */
+     MenuFont * getFont() { return pFont_; }
+ 
+@@ -168,6 +173,8 @@ protected:
+     /*! The text to be displayed.*/
+     std::string text_;
+     bool highlighted_;
++    /*! False renders the text at single size (see setDoubleSize). */
++    bool doubleSize_;
+     /*! True means the text is centered, false the text is anchored
+      * to the left.
+      */
 diff --git a/engine/src/appcontext.cpp b/engine/src/appcontext.cpp
 index 40145c1..d2e08ac 100644
 --- a/engine/src/appcontext.cpp
@@ -553,10 +578,35 @@ index 11e2c3a..6258f5d 100644
      pBackgroundTexture_->createRenderTargetTexture(fs_eng::kScreenWidth, fs_eng::kScreenHeight);
  }
 diff --git a/engine/src/menus/widget.cpp b/engine/src/menus/widget.cpp
-index 24e3c5b..3ef1936 100644
+index 24e3c5b..90307cc 100644
 --- a/engine/src/menus/widget.cpp
 +++ b/engine/src/menus/widget.cpp
-@@ -374,15 +374,17 @@ void ListBox::draw() {
+@@ -51,6 +51,7 @@ MenuText::MenuText(Menu *peer, int x, int y, const char *text, MenuFont *pFont,
+ {
+         highlighted_ = highlighted;
+         centered_ = false;
++        doubleSize_ = true;
+         anchorX_ = x;
+         anchorY_ = y;
+         pFont_ = pFont;
+@@ -67,6 +68,7 @@ MenuText::MenuText(Menu *peer, int x, int y, int width, const char *text, MenuFo
+ 
+     highlighted_ = highlighted;
+     centered_ = centered;
++    doubleSize_ = true;
+     anchorX_ = x;
+     anchorY_ = y;
+     pFont_ = pFont;
+@@ -162,7 +164,7 @@ void MenuText::setHighlighted(bool highlighted) {
+  * already drawn on the background image.
+  */
+ void MenuText::draw() {
+-    pFont_->drawText(anchorX_, anchorY_, text_, highlighted_);
++    pFont_->drawText(anchorX_, anchorY_, text_, highlighted_, doubleSize_);
+ }
+ 
+ bool ActionWidget::isMouseOver(Point2D point) {
+@@ -374,15 +376,17 @@ void ListBox::draw() {
      int i=0;
      for (std::list < std::string >::iterator it = labels_.begin();
           it != labels_.end(); it++, i++) {
@@ -577,7 +627,7 @@ index 24e3c5b..3ef1936 100644
          if (i < pModel_->size()) {
              if (pModel_->getElement(i)) {
                  // If line contains something, highlight it
-@@ -452,13 +454,13 @@ void TeamListBox::draw() {
+@@ -452,13 +456,13 @@ void TeamListBox::draw() {
                       if (squadLines_[ln] ==  i) {
                          char tmp[5];
                          sprintf(tmp, "%d", ln+1);
@@ -594,7 +644,7 @@ index 24e3c5b..3ef1936 100644
               }
      }
  }
-@@ -466,8 +468,8 @@ void TeamListBox::draw() {
+@@ -466,8 +470,8 @@ void TeamListBox::draw() {
  void TeamListBox::handleMouseMotion(Point2D point, [[maybe_unused]] uint32_t state) {
  
      if (pModel_) {
@@ -660,6 +710,75 @@ index 6256629..96201fd 100644
  
      txtTimeId_ = addStatic(500, 9, "", FontManager::SIZE_2, true);  // Time
  
+diff --git a/game/menus/researchmenu.cpp b/game/menus/researchmenu.cpp
+index 9c7e605..fe581c1 100644
+--- a/game/menus/researchmenu.cpp
++++ b/game/menus/researchmenu.cpp
+@@ -77,6 +77,15 @@ ResearchMenu::ResearchMenu(fs_eng::MenuManager * m):
+     getStatic(fundMaxLblId_)->setVisible(false);
+     fundMaxTxtId_ = addStatic(20, 143, "", FontManager::SIZE_1, true);    // Search maximum
+ 
++    // These SIZE_1 statics are stacked on a ~12-13px pitch (laid out for Latin
++    // text); CJK glyphs are already 12px, so the default x2 doubles them to
++    // 24px and they overlap. Keep them single size so labels and values read.
++    getStatic(fieldTxtId_)->setDoubleSize(false);
++    getStatic(fundMinLblId_)->setDoubleSize(false);
++    getStatic(fundMinTxtId_)->setDoubleSize(false);
++    getStatic(fundMaxLblId_)->setDoubleSize(false);
++    getStatic(fundMaxTxtId_)->setDoubleSize(false);
++
+     incrFundId_ = addOption(16, 210, 129, 25,  "#RES_INC_FUND_BUT", FontManager::SIZE_2, kMenuIdNoMenu, false);
+     registerHotKey(fs_eng::kKeyCode_Up, incrFundId_);
+     decrFundId_ = addOption(16, 260, 129, 25,  "#RES_DEC_FUND_BUT", FontManager::SIZE_2, kMenuIdNoMenu, false);
+@@ -201,37 +210,39 @@ void ResearchMenu::showResGraph(fs_knl::Research *pRes) {
+ void ResearchMenu::drawSelectedWeaponInfos(int x, int y) {
+     char tmp[100];
+ 
+-    getMenuFont(FontManager::SIZE_1)->drawText(x, y, pSelectedWeapon_->getName(), false);
++    // CJK build: pass x2=false (5th arg) so SIZE_1 names render at 12px, not the
++    // default 24px which overlapped the stat lines on this 12px pitch.
++    getMenuFont(FontManager::SIZE_1)->drawText(x, y, pSelectedWeapon_->getName(), false, false);
+     sprintf(tmp, "COST   :%d", pSelectedWeapon_->cost());
+-    getMenuFont(FontManager::SIZE_1)->drawText(x, y + 12, tmp, false);
++    getMenuFont(FontManager::SIZE_1)->drawText(x, y + 12, tmp, false, false);
+     y += 24;
+ 
+     if (pSelectedWeapon_->ammoCapacity() >= 0) {
+         sprintf(tmp, "AMMO   :%d", pSelectedWeapon_->ammoCapacity());
+-        getMenuFont(FontManager::SIZE_1)->drawText(x, y, tmp, false);
+-y += 12;
++        getMenuFont(FontManager::SIZE_1)->drawText(x, y, tmp, false, false);
++        y += 12;
+     }
+ 
+     if (pSelectedWeapon_->range() >= 0) {
+         sprintf(tmp, "RANGE  :%d", pSelectedWeapon_->range());
+-        getMenuFont(FontManager::SIZE_1)->drawText(x, y, tmp, false);
++        getMenuFont(FontManager::SIZE_1)->drawText(x, y, tmp, false, false);
+         y += 12;
+     }
+ 
+     if (pSelectedWeapon_->damagePerShot() >= 0 && pSelectedWeapon_->ammoCapacity() >= 0) {
+         sprintf(tmp, "SHOT   :%d", pSelectedWeapon_->damagePerShot());
+-        getMenuFont(FontManager::SIZE_1)->drawText(x, y, tmp, false);
++        getMenuFont(FontManager::SIZE_1)->drawText(x, y, tmp, false, false);
+         y += 12;
+     }
+ }
+ 
+ void ResearchMenu::drawSelectedModInfos(int x, int y)
+ {
+-    getMenuFont(FontManager::SIZE_1)->drawText(x, y, pSelectedMod_->getName(), false);
++    getMenuFont(FontManager::SIZE_1)->drawText(x, y, pSelectedMod_->getName(), false, false);
+     char tmp[100];
+     sprintf(tmp, "COST   :%d", pSelectedMod_->cost());
+-    getMenuFont(FontManager::SIZE_1)->drawText(504, y + 14, tmp, false);
+-    getMenuFont(FontManager::SIZE_1)->drawText(504, y + 28, pSelectedMod_->desc(), false);
++    getMenuFont(FontManager::SIZE_1)->drawText(504, y + 14, tmp, false, false);
++    getMenuFont(FontManager::SIZE_1)->drawText(504, y + 28, pSelectedMod_->desc(), false, false);
+ }
+ 
+ bool ResearchMenu::handleTick(uint32_t elapsed)
 diff --git a/game/menus/selectmenu.cpp b/game/menus/selectmenu.cpp
 index 31d5129..c06bae1 100644
 --- a/game/menus/selectmenu.cpp
@@ -1108,3 +1227,64 @@ index 0000000..8dcc71f
 +    REQUIRE(brief.infoCost(0) == 100);
 +    REQUIRE(std::string(brief.briefing(0)).find("預設") != std::string::npos);
 +}
+diff --git a/utils/src/file.cpp b/utils/src/file.cpp
+index 880376f..2bbfcf9 100644
+--- a/utils/src/file.cpp
++++ b/utils/src/file.cpp
+@@ -64,14 +64,18 @@ namespace fs_utl {
+     fs::path File::userConfFolderPath_ = "";
+ 
+ #ifdef _WIN32
+-static std::string exeFolder() {
+-    char buf[1024];
+-    GetModuleFileName(NULL, buf, 1024);
+-    std::string tmp(buf);
+-    size_t pos = tmp.find_last_of('\\');
+-    if (pos != std::string::npos) tmp.erase(pos + 1);
+-    else tmp = ".";
+-    return tmp;
++// Return the folder containing freesynd.exe as an fs::path built from the WIDE
++// module path. The ANSI GetModuleFileName mangles non-ASCII (e.g. CJK 極道梟雄)
++// folder names, and feeding that narrow string to std::filesystem throws
++// "Cannot convert character sequence" under Wine, crashing before the game
++// window opens. Keeping the path wide end-to-end avoids any lossy conversion.
++static fs::path exeFolder() {
++    wchar_t buf[2048];
++    DWORD n = GetModuleFileNameW(NULL, buf, 2048);
++    if (n == 0 || n >= 2048) {
++        return fs::path(L".");
++    }
++    return fs::path(buf).parent_path();
+ }
+ #endif
+ 
+@@ -194,7 +198,7 @@ static bool getResourcePath(fs::path& resourcePath) {
+         if (iniFolder.size() == 0) {
+     #ifdef _WIN32
+         // Under windows config file is in the same directory as freesynd.exe
+-        iniFullPath.assign(exeFolder());
++        iniFullPath = exeFolder();
+         // Since we're defaulting to the exe's folder, no need to try to create a directory.
+     #else
+         // should only be on Linux
+@@ -223,14 +227,16 @@ static bool getResourcePath(fs::path& resourcePath) {
+         // We need to use default path and create folder if it does not exist
+         // On all platforms, we use the user's home folder.
+     #ifdef _WIN32
+-        // on Windows, home is defined using USERPROFILE env variable
+-        userConfFolderPath_ = getenv("USERPROFILE");
++        // Portable Windows build: keep user.conf and saves next to freesynd.exe.
++        // Using %USERPROFILE%\.freesynd would miss the bundled user.conf (notably
++        // test_data=0), so the game would validate the translated MISS*.DAT data,
++        // fail testOriginalData(), throw, and abort before opening any window.
++        userConfFolderPath_ = exeFolder();
+     #else
+         // Under unix (and Mac) it's in the user home directory
+         userConfFolderPath_ = getenv("HOME");
+-    #endif
+-
+         userConfFolderPath_ /= ".freesynd";
++    #endif
+ 
+         if (!fs::exists(userConfFolderPath_)) {
+             LOG(Log::k_FLG_IO, "File", "getOrCreateUserConfFolder", ("Creating user config folder %s", userConfFolderPath_.string().c_str()));
