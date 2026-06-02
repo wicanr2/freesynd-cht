@@ -655,6 +655,46 @@ index 24e3c5b..90307cc 100644
          if (i >= 0 && i < (int) pModel_->size()) {
              if (pModel_->getElement(i)) {
                  // If line contains something, highlight it
+diff --git a/game/freesynd.cpp b/game/freesynd.cpp
+index ae0590b..b4a9b6a 100644
+--- a/game/freesynd.cpp
++++ b/game/freesynd.cpp
+@@ -23,8 +23,10 @@
+ 
+ #include <cstdio>
+ #include <cstdlib>
++#include <locale>
+ 
+ #ifdef _WIN32
++#include <codecvt>
+ #include <windows.h>
+ #include <io.h>
+ #else
+@@ -121,6 +123,24 @@ int main(int argc, char *argv[]) {
+ 
+     printf("FreeSynd v%i.%i (mar 2026)\n", FS_VERSION_MAJOR, FS_VERSION_MINOR);
+ 
++#ifdef _WIN32
++    // std::filesystem converts between the wide native path and a narrow
++    // std::string using the global locale's codecvt<wchar_t,char>. The default
++    // "C" facet cannot represent non-ASCII, so path.string() throws "Cannot
++    // convert character sequence" on any absolute path containing CJK (e.g. a
++    // 極道梟雄 folder) — killing the game right after the window opens. Install a
++    // UTF-8/UTF-16 codecvt so those conversions always succeed. (Only replaces
++    // the codecvt facet; the unnamed locale leaves the C locale / number
++    // formatting untouched.)
++    try {
++#pragma GCC diagnostic push
++#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
++        std::locale::global(std::locale(std::locale(),
++                                        new std::codecvt_utf8_utf16<wchar_t>));
++#pragma GCC diagnostic pop
++    } catch (...) { /* keep the default locale on any failure */ }
++#endif
++
+ #ifdef CHEAP_LEAK_DETECTION
+     initLeakDetection();
+ #endif
 diff --git a/game/menus/briefmenu.cpp b/game/menus/briefmenu.cpp
 index 1b0ad36..530dbe9 100644
 --- a/game/menus/briefmenu.cpp
