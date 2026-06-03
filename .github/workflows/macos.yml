@@ -53,12 +53,16 @@ jobs:
           ref: fa27909aa576df22cdb2044eb63f5c2293d57be2
           path: freesynd
 
-      - name: Install build deps (Homebrew)
+      - name: Install build deps (Homebrew + conan)
         run: |
           brew update > /dev/null || true
-          brew install sdl2 sdl2_image sdl2_mixer dylibbundler ninja || true
+          # SDL is a *system* dep here (FindSDL2 + USE_SYSTEM_SDL); dylibbundler
+          # makes the .app self-contained. The smaller libs (libpng, cli11,
+          # crcpp, utfcpp) come from conan via cmake/conan_provider.cmake.
+          brew install sdl2 sdl2_image sdl2_mixer dylibbundler ninja conan || true
+          conan profile detect --force
           echo "brew prefix: $(brew --prefix)"
-          which dylibbundler cmake ninja
+          which dylibbundler cmake ninja conan
 
       - name: Apply CHT patches + bake in fonts / chinese-tw.lng
         working-directory: freesynd
@@ -80,6 +84,7 @@ jobs:
             -DUSE_SYSTEM_SDL=ON \
             -DUSE_SDL_MIXER=ON \
             -DBUILD_TESTING=OFF \
+            -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES=cmake/conan_provider.cmake \
             -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=13.4 \
             -DCMAKE_PREFIX_PATH="$(brew --prefix)"
