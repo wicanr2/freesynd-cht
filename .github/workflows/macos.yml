@@ -1,0 +1,112 @@
+name: macOS build (極道梟雄 640x480)
+
+# Builds the ENGINE-ONLY 極道梟雄.app on real macOS runners.
+#
+# IP-clean: this only clones GPLv3 FreeSynd, applies the public CHT patches, and
+# bakes in the localization's own fonts + chinese-tw.lng. It deliberately does
+# NOT include any EA content (no synd-data / MISS*.DAT, no reconstructed mission
+# briefings) — those are injected locally by the owner against their own copy of
+# the game. The uploaded artifact is therefore a translation/engine build only.
+#
+# Two architectures so a "not sure which Mac" owner is covered:
+#   arm64  (Apple Silicon)  -> macos-14
+#   x86_64 (Intel / Rosetta) -> macos-13
+#
+# The .app is built unsigned. After data injection it MUST be ad-hoc re-signed on
+# a Mac (codesign --force --deep -s -) — adding files invalidates any signature,
+# and Apple Silicon refuses to launch an invalid bundle. The delivery zip ships a
+# 啟用.command that does exactly that.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/macos.yml'
+      - 'patches/**'
+      - 'fonts/**'
+      - 'data/lang/**'
+
+jobs:
+  build:
+    name: ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-14
+          - arch: x86_64
+            runner: macos-13
+
+    steps:
+      - name: Checkout localization (freesynd-cht)
+        uses: actions/checkout@v4
+        with:
+          path: freesynd-cht
+
+      - name: Checkout FreeSynd engine @ fa27909
+        uses: actions/checkout@v4
+        with:
+          repository: bni/freesynd
+          ref: fa27909
+          path: freesynd
+
+      - name: Install build deps (Homebrew)
+        run: |
+          brew update > /dev/null || true
+          brew install sdl2 sdl2_image sdl2_mixer dylibbundler ninja || true
+          echo "brew prefix: $(brew --prefix)"
+          which dylibbundler cmake ninja
+
+      - name: Apply CHT patches + bake in fonts / chinese-tw.lng
+        working-directory: freesynd
+        run: |
+          git apply ../freesynd-cht/patches/01-freesynd-chinese-tc.patch
+          git apply ../freesynd-cht/patches/02-hd-640x480-crisp.patch
+          cp ../freesynd-cht/fonts/chinese-12.fnt ../freesynd-cht/fonts/chinese-16.fnt data/fonts/
+          cp ../freesynd-cht/data/lang/chinese-tw.lng data/lang/
+          echo "fonts:" && ls -1 data/fonts/chinese-*.fnt
+          echo "lng:"   && ls -1 data/lang/chinese-tw.lng
+
+      - name: Configure (CMake, system SDL via Homebrew, ${{ matrix.arch }})
+        working-directory: freesynd
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DUSE_SYSTEM_SDL=ON \
+            -DUSE_SDL_MIXER=ON \
+            -DBUILD_TESTING=OFF \
+            -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.4 \
+            -DCMAKE_PREFIX_PATH="$(brew --prefix)"
+
+      - name: Build
+        working-directory: freesynd
+        run: cmake --build build -j3
+
+      - name: Assemble 極道梟雄.app (rename bundle, strip any stray EA data)
+        working-directory: freesynd
+        run: |
+          APP=$(find build -maxdepth 4 -name '*.app' -type d | head -1)
+          test -n "$APP" || { echo "ERROR: no .app produced"; find build -maxdepth 4 -name '*.app'; exit 1; }
+          echo "built bundle: $APP"
+          STAGE="$RUNNER_TEMP/stage"
+          rm -rf "$STAGE"; mkdir -p "$STAGE"
+          cp -R "$APP" "$STAGE/極道梟雄.app"
+          # Safety net: the artifact must be engine-only. Remove any original-game
+          # data folder if the build happened to create one.
+          rm -rf "$STAGE/極道梟雄.app/Contents/Resources/data" || true
+          echo "=== bundle layout ==="
+          find "$STAGE/極道梟雄.app" -maxdepth 3 -print | sed "s#$STAGE/##"
+          # tar (not zip) to preserve the +x bit on the executable and any
+          # framework symlinks across the Linux download hop.
+          tar -C "$STAGE" -czf "$RUNNER_TEMP/極道梟雄-640x480-mac-${{ matrix.arch }}.tar.gz" 極道梟雄.app
+          ls -la "$RUNNER_TEMP/極道梟雄-640x480-mac-${{ matrix.arch }}.tar.gz"
+
+      - name: Upload engine-only app
+        uses: actions/upload-artifact@v4
+        with:
+          name: 極道梟雄-640x480-mac-${{ matrix.arch }}
+          path: ${{ runner.temp }}/極道梟雄-640x480-mac-${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
