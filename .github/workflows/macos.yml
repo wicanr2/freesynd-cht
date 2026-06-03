@@ -49,7 +49,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: bni/freesynd
-          ref: fa27909
+          # full 40-char SHA — actions/checkout cannot fetch an abbreviated SHA
+          ref: fa27909aa576df22cdb2044eb63f5c2293d57be2
           path: freesynd
 
       - name: Install build deps (Homebrew)
