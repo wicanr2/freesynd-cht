@@ -65,6 +65,8 @@ jobs:
         run: |
           git apply ../freesynd-cht/patches/01-freesynd-chinese-tc.patch
           git apply ../freesynd-cht/patches/02-hd-640x480-crisp.patch
+          # fa27909 ships no data/fonts — the CHT bitmap fonts go here.
+          mkdir -p data/fonts data/lang
           cp ../freesynd-cht/fonts/chinese-12.fnt ../freesynd-cht/fonts/chinese-16.fnt data/fonts/
           cp ../freesynd-cht/data/lang/chinese-tw.lng data/lang/
           echo "fonts:" && ls -1 data/fonts/chinese-*.fnt
