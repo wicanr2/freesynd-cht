@@ -70,6 +70,18 @@ folder. Engine is GPLv3 FreeSynd.
   bundling the player's data. **Windows:** mingw-w64 `freesynd-win` image; the zip ships
   `極道梟雄.sh` / `極道梟雄.bat` launchers. Both bundle EA data, so **they are gitignored and
   never pushed**.
+- **macOS:** `.github/workflows/macos.yml` builds the **engine-only** `極道梟雄.app` on a real
+  `macos-14` runner (IP-clean — no EA data), per arch. arm64 is native; **x86_64 is cross-built
+  on the same Apple-Silicon runner** via Rosetta + Intel Homebrew (`arch -x86_64 /usr/local/bin/brew
+  install sdl2 …`, `-DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_PREFIX_PATH=/usr/local`) because free
+  Intel `macos-13` runners are deprecated and queue for ~an hour. Build notes: SDL is *system*
+  (Homebrew) but **libpng/cli11/crcpp/utfcpp come from conan** (`-DCMAKE_PROJECT_TOP_LEVEL_INCLUDES=
+  cmake/conan_provider.cmake`); set `-DCMAKE_OSX_DEPLOYMENT_TARGET=13.4` for `std::format`; check out
+  the engine by **full 40-char SHA**; `mkdir -p data/fonts` before copying the CHT fonts;
+  `dylibbundler` self-contains the bundle. Then **locally** inject EA data + briefings into
+  `Contents/Resources/data/` and `…/lang/chinese-tw/`, and ship a `啟用.command` that ad-hoc-signs on
+  the user's Mac (`xattr -cr` + `codesign --force --deep -s -`) — adding files invalidates the
+  signature and Apple Silicon won't launch an unsigned/invalid bundle.
 
 ## Hard IP rule
 
