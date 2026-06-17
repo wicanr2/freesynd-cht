@@ -1,7 +1,7 @@
 # 極道梟雄 — Syndicate (1993) 繁體中文化
 
 > *Syndicate*（Bullfrog／EA, 1993）的繁體中文化紀錄 ✦ 建構於開源引擎 **FreeSynd**
-> 全 373 條 UI 字串 + 50 關任務簡報全翻譯 ✦ Noto Sans CJK TC 點陣字 ✦ 系統 IME 中文輸入
+> 230 條 UI 字串 + 50 關任務簡報全翻譯 ✦ Noto Sans CJK TC 點陣字 ✦ 系統 IME 中文輸入
 
 這個 repo 是一份 **「翻譯紀錄 / 補丁」**，不是遊戲本體。它只收錄**我的翻譯成果**——
 **原版英文文字（EA 版權）一個字都沒有**，只用雜湊值（FNV-1a 64-bit）對應。
@@ -34,6 +34,10 @@
 | 戰場（即時 HUD：觀察中／移動中） | 遊戲暫停 |
 |---|---|
 | ![戰場](docs/screenshots/battlefield.png) | ![暫停](docs/screenshots/paused.png) |
+
+| 🤖 AI 模式切換（公司設定 → 正常／聰明，本中文化新增） |
+|---|
+| ![AI 模式](docs/screenshots/ai-toggle.png) |
 
 ---
 
@@ -168,7 +172,7 @@
 
 1. **你自己的正版 Syndicate (1993)** — `Synd_1993.zip` 解壓出的 `MISS01.DAT`…`MISS50.DAT` 等原始檔。
 2. **支援 `CHINESE_TC` 的 FreeSynd 建置** — 含繁中引擎修改（字型 CJK 分流、UTF-8 簡報 loader、IME）。
-   引擎修改以 GPL patch 形式收錄於 [`patches/`](patches/)（核心繁中化 + 兩個畫面版本：640×480 銳利 / 1024×768 平滑），套用方式見 [`patches/README.md`](patches/README.md)。
+   引擎修改以 GPL patch 形式收錄於 [`patches/`](patches/)（核心繁中化 + 兩個畫面版本：640×480 銳利 / 1024×768 平滑 + 可選的 AI：正常／聰明 補完），套用方式見 [`patches/README.md`](patches/README.md)。
 
 ### 三步套用
 ```bash
