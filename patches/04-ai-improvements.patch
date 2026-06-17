@@ -152,6 +152,64 @@ index c966067..45aa732 100644
      /*! Button in the main window to accept change.*/
      int acceptButId_;
      /*! Button in the main window to cancel change.*/
+diff --git a/kernel/include/fs-kernel/ia/behaviour.h b/kernel/include/fs-kernel/ia/behaviour.h
+index e6e19e7..260786e 100644
+--- a/kernel/include/fs-kernel/ia/behaviour.h
++++ b/kernel/include/fs-kernel/ia/behaviour.h
+@@ -293,9 +293,11 @@ private:
+ /*!
+  * Defensive behaviour for player agents.
+  * Each scan period, checks for nearby armed hostile peds within a
+- * Perception-scaled radius. If the agent already has a weapon drawn,
+- * fires at the closest threat without moving.
+- * Agents never auto-equip weapons and never move toward threats.
++ * Perception-scaled radius. When a threat is found the agent draws a
++ * shooting weapon if it has none out (self-defence) and fires at the
++ * closest threat. Reacts according to IPA: Perception scales detection
++ * range, Adrenaline scales the scan/reaction frequency. Agents still
++ * fire in place (they do not chase threats).
+  */
+ class AgentDefenseBehaviourComponent : public BehaviourComponent {
+ public:
+@@ -306,6 +308,11 @@ public:
+ private:
+     //! Base detection range (same as other scout distances)
+     static const int kBaseDefenseRange;
++    //! Base scan period in ms, scaled down by Adrenaline (faster reaction)
++    static const int kBaseScanPeriod;
++    //! Lower/upper bounds for the adrenaline-scaled scan period (ms)
++    static const int kMinScanPeriod;
++    static const int kMaxScanPeriod;
+ 
+     //! Find the nearest armed hostile ped within the given range
+     PedInstance * findNearestArmedHostile(Mission *pMission, PedInstance *pPed, int range);
+@@ -325,6 +332,8 @@ public:
+     static const int kAllyAlertRange;
+     //! Maximum detection range
+     static const int kMaxIntelRange;
++    //! How long (ms) a target may stay out of sight before we give up pursuit
++    static const int kGiveUpPursuitMs;
+ 
+     PlayerHostileBehaviourComponent();
+ 
+@@ -343,6 +352,8 @@ private:
+     void alertNearbyAllies(Mission *pMission, PedInstance *pPed, PedInstance *pTarget);
+     //! Compute effective detection range based on weapon and perception IPA
+     int computeDetectionRange(PedInstance *pPed);
++    //! True if pTarget is still within detection range and line of sight
++    bool isTargetVisible(Mission *pMission, PedInstance *pPed, PedInstance *pTarget);
+ 
+    /*!
+      * Status for behavior.
+@@ -363,6 +374,8 @@ private:
+     fs_utl::Timer scoutTimer_;
+     /*! The ped that the owner has targeted and potentially is shooting at.*/
+     PedInstance *pTarget_;
++    /*! Accumulated time (ms) the current target has been out of sight.*/
++    int lostTargetMs_ = 0;
+ };
+ 
+ /*!
 diff --git a/kernel/src/ia/behaviour.cpp b/kernel/src/ia/behaviour.cpp
 index 5c65db6..e03bf7c 100644
 --- a/kernel/src/ia/behaviour.cpp
