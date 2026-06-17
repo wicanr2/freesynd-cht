@@ -113,6 +113,30 @@ tools/ttf2fnt.py         # 以 Noto Sans CJK TC 點陣化 → chinese-{12,16}.fn
 
 ---
 
+## 7. 擴充引擎 AI：kernel 可以讀 engine 設定 ＋ 正常／聰明 開關
+
+**背景**：AI 行為元件在 `kernel/`（`behaviour.cpp` / `shot.cpp` / `pedmanager.cpp`），
+而設定 `AppContext` 在 `engine/`。直覺以為 kernel 不該依賴 engine——其實**可以**：
+`weapon.cpp` 早就 `#include "fs-engine/appcontext.h"` 並用 `g_Ctx`，照做即可。
+
+**設計**：所有 AI 強化都做成**可切換、預設聰明**的 `ai_smart` 開關，每一項都 gate 在
+`g_Ctx.isSmartAI()`：
+
+- **正常（Classic）** ＝ 忠實重現上游 `fa27909` 行為（敵人無限追、我方未持槍不還擊）。
+- **聰明（Smart）** ＝ 我方受威脅自動拔「傷害最高」的武器、腎上腺素→反應、智力→散布；
+  敵人失去視線滿 4 秒放棄追擊；守衛改用先前**定義了卻從未實例化**的
+  `GuardAreaBehaviourComponent` 守崗位。
+
+**遊戲內切換**：在「公司設定」加一顆 `confmenu.cpp` 的 Option 按鈕，用新加的 public
+`Option::setText()` 翻轉標籤（`AI：正常` / `AI：聰明`），`AppContext::updateSmartAI()`
+把 `ai_smart` 寫回 `user.conf`。（新標籤的「聰」字 U+8070 要重生字型，見 §4。）
+
+**踩雷提醒**：`peds_` 這個 vector **從不 erase**（屍體留著、`isDead()==true`），
+所以「vector 縮小→索引越界」那類 crash 臆測是錯的。`kBehvEvtWeaponOut` 事件由
+**game 層**（`gameplaymenu.cpp`）派發、不在 kernel —— 只 grep kernel 會誤以為它從沒被觸發。
+
+---
+
 ## Build / Test 迴圈
 
 引擎在 Ubuntu 22.04 host 的 g++ 11 上因 `<format>` 編不過，一律走 docker：
@@ -124,9 +148,14 @@ tools/ttf2fnt.py         # 以 Noto Sans CJK TC 點陣化 → chinese-{12,16}.fn
 | `freesynd-win` | mingw-w64 跨編 Windows zip（含 `極道梟雄.bat` 啟動器） |
 | `freesynd-dbgrun` | gdb 交火驗證用的 runtime（見下） |
 
-**gdb 交火 harness**：`00`（panic crash 修正）與 `04`（AI 補完）這類涉及戰場 AI 的改動，
-都在 `freesynd-dbgrun` 裡用 gdb 跑進任務、實際交火，確認 §5 那類「開打幾秒後才炸」的 crash 已消失、
-新 AI 行為（依 IPA 自衛、失聯放棄追擊）按預期運作 —— 先建一個**決定性的進戰場 pass/fail 訊號**，再動 AI 邏輯。
+**gdb 交火 harness**：`docker/qa-crash-gdb.sh` 在 `freesynd-dbgrun`（24.04 ＋ gdb ＋ xvfb ＋ xdotool）
+裡用 `gdb -batch` 跑 **debug build**，自動驅動 主選單→簡報→接受→進戰場，再做一段
+「全選→移動→右鍵開火」的交火迴圈，撞到 SIGSEGV 就 dump `bt`。§5 那顆 panic crash 就是這樣抓到的。
+先建這個**決定性的進戰場 pass/fail 訊號**，再動 AI 邏輯。
+
+> **harness 眉角**：Xvfb 螢幕要設成**剛好等於 2× 視窗**（`1280x800`），否則視窗在大畫面裡被置中、
+> `xdotool` 的點擊會偏約 100px；`xdotool search --name freesynd` 找視窗會時靈時不靈，但
+> 螢幕絕對座標點擊穩定。選單畫面用 `docker/render-{select,conf}.sh` 渲染檢查。
 
 > 打包產物（AppImage / Windows zip）都會 bundle EA 原始資料，因此 **gitignore、永不 push**；
 > 公開 repo 只收翻譯 + GPL 引擎 patch + FNV-1a-64 雜湊。
