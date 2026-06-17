@@ -1,0 +1,25 @@
+diff --git a/kernel/include/fs-kernel/ia/behaviour.h b/kernel/include/fs-kernel/ia/behaviour.h
+index 38f4ba9..e6e19e7 100644
+--- a/kernel/include/fs-kernel/ia/behaviour.h
++++ b/kernel/include/fs-kernel/ia/behaviour.h
+@@ -243,7 +243,7 @@ private:
+     /*! Use to detect if ped is getting from panic to not panic.*/
+     bool backFromPanic_;
+     /*! The ped that frightened this civilian.*/
+-    PedInstance *pArmedPed_;
++    PedInstance *pArmedPed_ = nullptr;
+ };
+ 
+ class PoliceBehaviourComponent : public BehaviourComponent {
+diff --git a/kernel/src/ia/behaviour.cpp b/kernel/src/ia/behaviour.cpp
+index eef141f..5c65db6 100644
+--- a/kernel/src/ia/behaviour.cpp
++++ b/kernel/src/ia/behaviour.cpp
+@@ -387,6 +387,7 @@ void PersuadedBehaviourComponent::changeTargetWeaponInAltActions(WeaponInstance
+ 
+ PanicComponent::PanicComponent():
+         BehaviourComponent(), scoutTimer_(500) {
++    pArmedPed_ = nullptr;
+     backFromPanic_ = false;
+     status_ = kPanicStatusCalm;
+     // this component will be activated by event to
