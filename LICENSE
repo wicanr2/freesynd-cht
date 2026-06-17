@@ -1,0 +1,47 @@
+極道梟雄 (freesynd-cht) — Licensing
+===================================
+
+This repository is a *localization record + patch set* for the 1993 Bullfrog
+game *Syndicate*, built on the open-source FreeSynd engine. Different parts of
+the repository are under different licenses. None of it contains EA's original
+copyrighted game content (see README.md → "IP 乾淨設計").
+
+1. Engine patches and tools  →  GPL-3.0-or-later
+---------------------------------------------------
+  patches/*.patch  and  tools/*.py  (and tools/*.cpp)
+  are modifications to / utilities for FreeSynd, which is licensed
+  GNU General Public License v3.0 or later. As derivative works they are
+  likewise GPL-3.0-or-later. Each engine source file carries the GPLv3
+  notice; the full text is at https://www.gnu.org/licenses/gpl-3.0.txt
+  SPDX-License-Identifier: GPL-3.0-or-later
+
+2. Bitmap fonts  →  SIL Open Font License 1.1
+-----------------------------------------------
+  fonts/chinese-12.fnt, fonts/chinese-16.fnt are bitmap glyph atlases
+  rendered from Noto Sans CJK TC (© Google, SIL OFL-1.1). The derived
+  bitmaps remain under OFL-1.1.
+  SPDX-License-Identifier: OFL-1.1
+  Full text: https://openfontlicense.org
+
+3. Traditional-Chinese translations  →  personal / non-commercial
+------------------------------------------------------------------
+  data/lang/chinese-tw.lng              (functional UI strings — fair-use
+                                         parallel to the engine's existing
+                                         fr/de/it .lng files)
+  translations_public/*.json            (briefing translations stored ONLY as
+                                         FNV-1a-64 hashes of the original text
+                                         + the zh rendering — the English is
+                                         never stored)
+  These are released for personal, non-commercial use with a copy of
+  *Syndicate* you legally own. They reproduce no EA content; the original
+  prose is recovered locally from the player's own game data via
+  tools/apply_public.py.
+
+4. Documentation  →  CC BY 4.0
+-------------------------------
+  README.md, docs/*.md, CONTEXT.md
+  SPDX-License-Identifier: CC-BY-4.0
+
+----------------------------------------------------------------------
+Syndicate is a trademark of its respective owners. This is an unofficial
+fan localization and is not affiliated with or endorsed by Electronic Arts.
