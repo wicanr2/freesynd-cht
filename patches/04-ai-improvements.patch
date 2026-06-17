@@ -1,66 +1,170 @@
-diff --git a/kernel/include/fs-kernel/ia/behaviour.h b/kernel/include/fs-kernel/ia/behaviour.h
-index e6e19e7..260786e 100644
---- a/kernel/include/fs-kernel/ia/behaviour.h
-+++ b/kernel/include/fs-kernel/ia/behaviour.h
-@@ -293,9 +293,11 @@ private:
- /*!
-  * Defensive behaviour for player agents.
-  * Each scan period, checks for nearby armed hostile peds within a
-- * Perception-scaled radius. If the agent already has a weapon drawn,
-- * fires at the closest threat without moving.
-- * Agents never auto-equip weapons and never move toward threats.
-+ * Perception-scaled radius. When a threat is found the agent draws a
-+ * shooting weapon if it has none out (self-defence) and fires at the
-+ * closest threat. Reacts according to IPA: Perception scales detection
-+ * range, Adrenaline scales the scan/reaction frequency. Agents still
-+ * fire in place (they do not chase threats).
-  */
- class AgentDefenseBehaviourComponent : public BehaviourComponent {
- public:
-@@ -306,6 +308,11 @@ public:
- private:
-     //! Base detection range (same as other scout distances)
-     static const int kBaseDefenseRange;
-+    //! Base scan period in ms, scaled down by Adrenaline (faster reaction)
-+    static const int kBaseScanPeriod;
-+    //! Lower/upper bounds for the adrenaline-scaled scan period (ms)
-+    static const int kMinScanPeriod;
-+    static const int kMaxScanPeriod;
+diff --git a/data/lang/english.lng b/data/lang/english.lng
+index 941af40..b24b8b1 100644
+--- a/data/lang/english.lng
++++ b/data/lang/english.lng
+@@ -42,6 +42,8 @@ CONF_COM_NAME_MSG=CHANGE COMPANY NAME
+ CONF_YOUR_NAME_BUT=YOUR NAME
+ CONF_YOUR_NAME_MSG=ENTER YOUR NAME
+ CONF_OK_BUT=OK
++CONF_AI_NORMAL=AI: CLASSIC
++CONF_AI_SMART=AI: SMART
  
-     //! Find the nearest armed hostile ped within the given range
-     PedInstance * findNearestArmedHostile(Mission *pMission, PedInstance *pPed, int range);
-@@ -325,6 +332,8 @@ public:
-     static const int kAllyAlertRange;
-     //! Maximum detection range
-     static const int kMaxIntelRange;
-+    //! How long (ms) a target may stay out of sight before we give up pursuit
-+    static const int kGiveUpPursuitMs;
+ MAP_BRIEF_BUT =&BRIEF
+ MAP_POP = POP
+diff --git a/engine/include/fs-engine/appcontext.h b/engine/include/fs-engine/appcontext.h
+index c626026..27906a5 100644
+--- a/engine/include/fs-engine/appcontext.h
++++ b/engine/include/fs-engine/appcontext.h
+@@ -50,6 +50,10 @@ public:
+     bool isPlayIntro() { return playIntro_; }
  
-     PlayerHostileBehaviourComponent();
+     bool isTestFiles() { return test_files_; }
++    //! True = enhanced ("smart") AI; false = faithful original behaviour
++    bool isSmartAI() { return smartAI_; }
++    //! Toggle smart AI in memory (call updateSmartAI to also persist)
++    void setSmartAI(bool b) { smartAI_ = b; }
+     //! Return the sound volume parameter
+     int getSoundVolume() { return soundVolume_; }
+     //! Return the forced scale factor (0 = auto-calculate)
+@@ -61,6 +65,8 @@ public:
+     void deactivateTestFlag();
+     //! Sets the sound volume parameter to the given value in the config file
+     void updateSoundVolume(int volume);
++    //! Persists the smart-AI flag to the config file
++    void updateSmartAI(bool smart);
  
-@@ -343,6 +352,8 @@ private:
-     void alertNearbyAllies(Mission *pMission, PedInstance *pPed, PedInstance *pTarget);
-     //! Compute effective detection range based on weapon and perception IPA
-     int computeDetectionRange(PedInstance *pPed);
-+    //! True if pTarget is still within detection range and line of sight
-+    bool isTargetVisible(Mission *pMission, PedInstance *pPed, PedInstance *pTarget);
+     uint32_t getTimeForClick() { return time_for_click_; }
  
-    /*!
-      * Status for behavior.
-@@ -363,6 +374,8 @@ private:
-     fs_utl::Timer scoutTimer_;
-     /*! The ped that the owner has targeted and potentially is shooting at.*/
-     PedInstance *pTarget_;
-+    /*! Accumulated time (ms) the current target has been out of sight.*/
-+    int lostTargetMs_ = 0;
- };
+@@ -85,6 +91,8 @@ private:
+     uint32_t time_for_click_;
+     /*! True means data files will be verified.*/
+     bool test_files_{};
++    /*! True = enhanced "smart" AI, false = faithful original behaviour.*/
++    bool smartAI_;
+     /*! Language file. */
+     ConfigFile  *language_;
+     fs_eng::FS_Lang curr_language_;
+diff --git a/engine/include/fs-engine/menus/widget.h b/engine/include/fs-engine/menus/widget.h
+index fdef10c..3b6685d 100644
+--- a/engine/include/fs-engine/menus/widget.h
++++ b/engine/include/fs-engine/menus/widget.h
+@@ -249,6 +249,9 @@ public:
+     //! Runs the action for this widget
+     virtual void executeAction();
  
- /*!
++    //! Update the button label (resolves a #KEY or sets a literal string)
++    void setText(const char *text) { text_.setText(text); }
++
+ protected:
+ 
+     MenuText text_;
+diff --git a/engine/src/appcontext.cpp b/engine/src/appcontext.cpp
+index d2e08ac..be5a2a2 100644
+--- a/engine/src/appcontext.cpp
++++ b/engine/src/appcontext.cpp
+@@ -39,6 +39,7 @@ AppContext::AppContext() {
+     language_ = NULL;
+     soundVolume_ = 0;
+     scaleFactor_ = 0;
++    smartAI_ = true;
+ }
+ 
+ AppContext::~AppContext() {
+@@ -125,6 +126,7 @@ void AppContext::readOrCreateUserConf(const std::string& userConfFolder) {
+     test_files_ = userConf.read("test_data", true);
+     soundVolume_ = userConf.read("sound_volume", 100);
+     scaleFactor_ = userConf.read("scale_factor", 0);
++    smartAI_ = userConf.read("ai_smart", true);
+     const int languageID = userConf.read("language", 0);
+     std::string defaultDir;
+     fs_utl::File::getDefaultSaveFolder(defaultDir);
+@@ -140,6 +142,7 @@ void AppContext::readOrCreateUserConf(const std::string& userConfFolder) {
+         userConf.add("language", languageID);
+         userConf.add("save_data_dir", saveDataDir);
+         userConf.add("sound_volume", soundVolume_);
++        userConf.add("ai_smart", smartAI_);
+ 
+         if (!updateUserConf(userConf, userConfFullpath)) {
+             throw InitializationFailedException(std::format("Failed to update user configuration in folder: {}", userConfFullpath.string()));
+@@ -277,4 +280,19 @@ void AppContext::updateSoundVolume(int volume) {
+     updateUserConf(conf, userConfPath);
+ }
+ 
++/*!
++ * Update the ai_smart parameter in the config file.
++ * @param smart true for enhanced AI, false for faithful original behaviour
++ */
++void AppContext::updateSmartAI(bool smart) {
++    smartAI_ = smart;
++    std::filesystem::path userConfPath;
++    fs_utl::File::getUserConfFullPath(userConfPath);
++    LOG(Log::k_FLG_IO, "AppContext", "updateSmartAI", ("Updating ai_smart to %d in %s", smart, userConfPath.c_str()))
++    ConfigFile conf(userConfPath.string());
++    conf.add("ai_smart", smart);
++
++    updateUserConf(conf, userConfPath);
++}
++
+ }
+diff --git a/game/menus/confmenu.cpp b/game/menus/confmenu.cpp
+index 8cf0ee1..acc9c3c 100644
+--- a/game/menus/confmenu.cpp
++++ b/game/menus/confmenu.cpp
+@@ -31,6 +31,7 @@
+ #include "core/gamecontroller.h"
+ #include "core/gamesession.h"
+ #include "fs-engine/system/system.h"
++#include "fs-engine/appcontext.h"   // g_Ctx — AI mode toggle
+ 
+ using fs_eng::FontManager;
+ 
+@@ -48,6 +49,8 @@ ConfMenu::ConfMenu(fs_eng::MenuManager *m) :
+     logoButId_ = addOption(325, 65, 240, 20, "#CONF_COL_LOGO_BUT", FontManager::SIZE_2, kMenuIdNoMenu, true, false, fs_eng::Sprite::MSPR_BULLET_D, fs_eng::Sprite::MSPR_BULLET_L);
+     compNameButId_ = addOption(325, 90, 240, 20, "#CONF_COM_NAME_BUT", FontManager::SIZE_2, kMenuIdNoMenu, true, false, fs_eng::Sprite::MSPR_BULLET_D, fs_eng::Sprite::MSPR_BULLET_L);
+     userNameButId_ = addOption(325, 115, 240, 20, "#CONF_YOUR_NAME_BUT", FontManager::SIZE_2, kMenuIdNoMenu, true, false, fs_eng::Sprite::MSPR_BULLET_D, fs_eng::Sprite::MSPR_BULLET_L);
++    // AI mode toggle (classic faithful AI / enhanced smart AI)
++    aiModeButId_ = addOption(325, 140, 240, 20, g_Ctx.isSmartAI() ? "#CONF_AI_SMART" : "#CONF_AI_NORMAL", FontManager::SIZE_2, kMenuIdNoMenu, true, false, fs_eng::Sprite::MSPR_BULLET_D, fs_eng::Sprite::MSPR_BULLET_L);
+     // Accept button
+     acceptButId_ = addOption(17, 347, 128, 25, "#MENU_ACC_BUT", FontManager::SIZE_2, fs_game_menus::kMenuIdMain);
+     // Main menu button
+@@ -130,6 +133,11 @@ void ConfMenu::handleAction(const ActionDesc &action) {
+         showUserNamePanel();
+     } else if (action.id == compNameButId_) {
+         showCompanyNamePanel();
++    } else if (action.id == aiModeButId_) {
++        // Toggle and persist the AI mode, then update the button label.
++        bool newMode = !g_Ctx.isSmartAI();
++        g_Ctx.updateSmartAI(newMode);
++        getOption(aiModeButId_)->setText(newMode ? "#CONF_AI_SMART" : "#CONF_AI_NORMAL");
+     } else if (action.id == leftColButId_) {
+         tempColourId_--;
+         if (tempColourId_ < 0) {
+diff --git a/game/menus/confmenu.h b/game/menus/confmenu.h
+index c966067..45aa732 100644
+--- a/game/menus/confmenu.h
++++ b/game/menus/confmenu.h
+@@ -75,6 +75,8 @@ protected:
+     int compNameButId_;
+     /*! Button to open the change user name panel.*/
+     int userNameButId_;
++    /*! Button that toggles the AI mode (classic / smart).*/
++    int aiModeButId_;
+     /*! Button in the main window to accept change.*/
+     int acceptButId_;
+     /*! Button in the main window to cancel change.*/
 diff --git a/kernel/src/ia/behaviour.cpp b/kernel/src/ia/behaviour.cpp
-index 5c65db6..eb58924 100644
+index 5c65db6..e03bf7c 100644
 --- a/kernel/src/ia/behaviour.cpp
 +++ b/kernel/src/ia/behaviour.cpp
-@@ -40,6 +40,9 @@ namespace fs_knl {
+@@ -33,6 +33,7 @@
+ #include "fs-kernel/model/mission.h"
+ #include "fs-kernel/mgr/missionmanager.h"
+ #include "fs-kernel/mgr/weaponmanager.h"
++#include "fs-engine/appcontext.h"   // g_Ctx.isSmartAI() — AI mode toggle
+ 
+ namespace fs_knl {
+ //*************************************
+@@ -40,6 +41,9 @@ namespace fs_knl {
  //*************************************
  const int CommonAgentBehaviourComponent::kRegeratesHealthStep = 1;
  const int AgentDefenseBehaviourComponent::kBaseDefenseRange = 1500;
@@ -70,7 +174,7 @@ index 5c65db6..eb58924 100644
  const int PanicComponent::kScoutDistance = 1500;
  const int PanicComponent::kBaseDistanceToRun = 800;
  const double PersuadedBehaviourComponent::kMaxRangeForSearchingWeapon = 500.0;
-@@ -47,6 +50,7 @@ const int PoliceBehaviourComponent::kPoliceScoutDistance = 1500;
+@@ -47,6 +51,7 @@ const int PoliceBehaviourComponent::kPoliceScoutDistance = 1500;
  const int PoliceBehaviourComponent::kPolicePendingTime = 1500;
  const int PlayerHostileBehaviourComponent::kMaxIntelRange = 3584;
  const int PlayerHostileBehaviourComponent::kAllyAlertRange = 2048;
@@ -78,40 +182,71 @@ index 5c65db6..eb58924 100644
  
  Behaviour::~Behaviour() {
      destroyComponents();
-@@ -172,14 +176,22 @@ void AgentDefenseBehaviourComponent::execute(const Behaviour::BehaviourParam &pa
+@@ -154,6 +159,25 @@ AgentDefenseBehaviourComponent::AgentDefenseBehaviourComponent():
+         BehaviourComponent(), scoutTimer_(200), pTarget_(nullptr) {
+ }
  
++// Smart self-defence: pick the highest-damage shooting weapon that has ammo
++// and select it. Falls back to the engine's default loaded-shooter pick.
++static void selectBestDefensiveWeapon(PedInstance *pPed) {
++    WeaponInstance *pBest = nullptr;
++    int bestDmg = -1;
++    for (size_t i = 0; i < pPed->numWeapons(); i++) {
++        WeaponInstance *w = pPed->weapon(i);
++        if (w && w->canShoot() && w->ammoRemaining() > 0) {
++            int dmg = w->getClass()->damagePerShot();
++            if (dmg > bestDmg) { bestDmg = dmg; pBest = w; }
++        }
++    }
++    if (pBest) {
++        pPed->selectWeapon(pBest);
++    } else {
++        pPed->selectShootingWeaponWithAmmo();
++    }
++}
++
+ void AgentDefenseBehaviourComponent::execute(const Behaviour::BehaviourParam &param) {
+     PedInstance *pPed = param.pPed;
+ 
+@@ -173,13 +197,28 @@ void AgentDefenseBehaviourComponent::execute(const Behaviour::BehaviourParam &pa
      if (!scoutTimer_.update(param.elapsed))
          return;
--
+ 
 -    // Only fire back if the player has already drawn a weapon — never auto-equip
 -    if (!pPed->isArmed())
--        return;
-+    // Adrenaline drives reaction speed: high adrenaline shortens the scan
-+    // period (quicker to react), low adrenaline lengthens it.
-+    int scanPeriod = static_cast<int>(kBaseScanPeriod / pPed->adrenaline().getMultiplier());
-+    if (scanPeriod < kMinScanPeriod) scanPeriod = kMinScanPeriod;
-+    if (scanPeriod > kMaxScanPeriod) scanPeriod = kMaxScanPeriod;
-+    scoutTimer_.reset(scanPeriod);
++    const bool smart = g_Ctx.isSmartAI();
++    if (smart) {
++        // Adrenaline drives reaction speed: high adrenaline shortens the scan
++        // period (quicker to react), low adrenaline lengthens it.
++        int scanPeriod = static_cast<int>(kBaseScanPeriod / pPed->adrenaline().getMultiplier());
++        if (scanPeriod < kMinScanPeriod) scanPeriod = kMinScanPeriod;
++        if (scanPeriod > kMaxScanPeriod) scanPeriod = kMaxScanPeriod;
++        scoutTimer_.reset(scanPeriod);
++    } else if (!pPed->isArmed()) {
++        // Faithful behaviour: never auto-equip; only fire back if already armed.
+         return;
++    }
  
      int range = static_cast<int>(kBaseDefenseRange * pPed->perception().getMultiplier());
      PedInstance *pHostile = findNearestArmedHostile(param.pMission, pPed, range);
      if (pHostile) {
-+        // Self-defence: draw a shooting weapon if we have none out yet.
-+        if (!pPed->isArmed()) {
-+            pPed->selectShootingWeaponWithAmmo();
++        // Smart self-defence: draw the best weapon if we have none out yet.
++        if (smart && !pPed->isArmed()) {
++            selectBestDefensiveWeapon(pPed);
 +            if (!pPed->isArmed())
 +                return; // nothing to defend ourselves with
 +        }
          if (!pPed->isUsingWeapon()) {
              pPed->setDirectionTowardObject(*pHostile);
              WorldPoint targetPos(pHostile->position());
-@@ -691,9 +703,22 @@ void PlayerHostileBehaviourComponent::execute(const Behaviour::BehaviourParam &p
+@@ -691,9 +730,23 @@ void PlayerHostileBehaviourComponent::execute(const Behaviour::BehaviourParam &p
              alertNearbyAllies(param.pMission, param.pPed, pArmedGuy);
          }
      } else if (status_ == kHostileStatusFollowAndShoot) {
 -        if (pTarget_ == NULL || pTarget_->isDead()) {
 +        bool lostByTime = false;
-+        if (pTarget_ != NULL && !pTarget_->isDead()) {
++        // Give-up-on-lost is a smart-AI behaviour; faithful AI chases forever.
++        if (g_Ctx.isSmartAI() && pTarget_ != NULL && !pTarget_->isDead()) {
 +            // Track how long the target has been out of sight; give up the
 +            // chase if it stays hidden/out of range for too long instead of
 +            // pursuing forever.
@@ -129,7 +264,7 @@ index 5c65db6..eb58924 100644
              param.pPed->stopShooting();
              WaitAction *pWait = new WaitAction(WaitAction::kWaitWeapon);
              pWait->setWarnBehaviour(true);
-@@ -763,6 +788,18 @@ PedInstance * PlayerHostileBehaviourComponent::findVisiblePlayerAgent(Mission *p
+@@ -763,6 +816,18 @@ PedInstance * PlayerHostileBehaviourComponent::findVisiblePlayerAgent(Mission *p
      return NULL;
  }
  
@@ -148,19 +283,55 @@ index 5c65db6..eb58924 100644
  void PlayerHostileBehaviourComponent::alertToEnemy(PedInstance *pOwner, PedInstance *pTarget) {
      if (status_ != kHostileStatusDefault)
          return;
+diff --git a/kernel/src/mgr/pedmanager.cpp b/kernel/src/mgr/pedmanager.cpp
+index 8db08de..1417fb6 100644
+--- a/kernel/src/mgr/pedmanager.cpp
++++ b/kernel/src/mgr/pedmanager.cpp
+@@ -29,6 +29,7 @@
+ #include <assert.h>
+ 
+ #include "fs-utils/log/log.h"
++#include "fs-engine/appcontext.h"   // g_Ctx.isSmartAI()
+ #include "fs-kernel/mgr/agentmanager.h"
+ #include "fs-kernel/mgr/modmanager.h"
+ 
+@@ -236,7 +237,14 @@ void PedManager::initGuard(PedInstance *pPed) {
+     pPed->setTimeBeforeCheck(300);
+     pPed->setBaseModAcc(0.45);
+ 
+-    pPed->behaviour().addComponent(new PlayerHostileBehaviourComponent());
++    // Smart AI: guards hold their post and engage threats that enter their
++    // sight (GuardArea) — closer to the original game. Faithful AI keeps the
++    // upstream behaviour where guards pursue like enemy agents.
++    if (g_Ctx.isSmartAI()) {
++        pPed->behaviour().addComponent(new GuardAreaBehaviourComponent());
++    } else {
++        pPed->behaviour().addComponent(new PlayerHostileBehaviourComponent());
++    }
+ }
+ 
+ /*!
 diff --git a/kernel/src/model/shot.cpp b/kernel/src/model/shot.cpp
-index dd3a8d6..67af885 100644
+index dd3a8d6..96dbbbc 100644
 --- a/kernel/src/model/shot.cpp
 +++ b/kernel/src/model/shot.cpp
-@@ -87,6 +87,18 @@ void InstantImpactShot::diffuseImpact(Mission *pMission, const WorldPoint &origi
+@@ -28,6 +28,7 @@
+ #include <map>
+ 
+ #include "fs-engine/sound/soundmanager.h"
++#include "fs-engine/appcontext.h"   // g_Ctx.isSmartAI()
+ #include "fs-kernel/model/mission.h"
+ #include "fs-kernel/model/ped.h"
+ #include "fs-kernel/model/vehicle.h"
+@@ -87,6 +88,18 @@ void InstantImpactShot::diffuseImpact(Mission *pMission, const WorldPoint &origi
      if (angle == 0)
          return;
  
 +    // Intelligence-scaled accuracy for player agents: smarter agents shoot a
 +    // tighter cone of fire. Neutral IPA (1.0) leaves the spread unchanged;
-+    // enemy spread is untouched to preserve combat balance.
++    // enemy spread is untouched to preserve combat balance. Smart AI only.
 +    PedInstance *pShooter = dmg_.pWeapon->owner();
-+    if (pShooter && pShooter->isOurAgent()) {
++    if (g_Ctx.isSmartAI() && pShooter && pShooter->isOurAgent()) {
 +        double intelMult = pShooter->intelligence().getMultiplier(); // 0.5 .. 2.0
 +        double factor = 1.5 - 0.5 * intelMult;   // 1.25 dull .. 1.0 neutral .. 0.5 sharp
 +        if (factor < 0.4) factor = 0.4;

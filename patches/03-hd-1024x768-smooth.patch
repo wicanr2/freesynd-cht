@@ -257,3 +257,117 @@ index 530dbe9..82e9099 100644
               mm_renderer_.scrollDown();
          }
  
+diff --git a/game/menus/selectmenu.cpp b/game/menus/selectmenu.cpp
+index c06bae1..76d6f5e 100644
+--- a/game/menus/selectmenu.cpp
++++ b/game/menus/selectmenu.cpp
+@@ -133,26 +133,34 @@ void SelectMenu::drawAgent()
+         legsy -= 4;
+     }
+ 
++    // HD: the select background (with its baked connector lines + mod slot
++    // boxes) is stretched 400->480, but this menu draws with raw 640x400
++    // coords. The figure is assembled from fixed-size sprites, so mapping each
++    // part individually would tear it apart; instead shift the whole figure
++    // down by a uniform amount (figShift) to sit on the stretched frames,
++    // while the mod NAME labels — which belong inside the stretched slot
++    // boxes — get a full mapY().
++    const int figShift = mapY(180) - 180;
+     if (selected->slot(fs_knl::Mod::MOD_LEGS)) {
+         legs = selected->slot(fs_knl::Mod::MOD_LEGS)->icon(selected->isMale());
+-        getMenuFont(FontManager::SIZE_1)->drawText(366, 250,
++        getMenuFont(FontManager::SIZE_1)->drawText(366, mapY(250),
+             selected->slot(fs_knl::Mod::MOD_LEGS)->getName(),
+             false);
+     }
+     if (selected->slot(fs_knl::Mod::MOD_ARMS)) {
+         arms = selected->slot(fs_knl::Mod::MOD_ARMS)->icon(selected->isMale());
+-        getMenuFont(FontManager::SIZE_1)->drawText(366, 226,
++        getMenuFont(FontManager::SIZE_1)->drawText(366, mapY(226),
+             selected->slot(fs_knl::Mod::MOD_ARMS)->getName(),
+             false);
+     }
+ 
+-    menuSprites().drawSprite(arms, armsx, armsy, false, true);
+-    menuSprites().drawSprite(torso, 224, torsoy, false, true);
+-    menuSprites().drawSprite(legs, 224, legsy, false, true);
++    menuSprites().drawSprite(arms, armsx, armsy + figShift, false, true);
++    menuSprites().drawSprite(torso, 224, torsoy + figShift, false, true);
++    menuSprites().drawSprite(legs, 224, legsy + figShift, false, true);
+ 
+     if (selected->slot(fs_knl::Mod::MOD_CHEST)) {
+         int chest = selected->slot(fs_knl::Mod::MOD_CHEST)->icon(selected->isMale());
+-        getMenuFont(FontManager::SIZE_1)->drawText(366, 202,
++        getMenuFont(FontManager::SIZE_1)->drawText(366, mapY(202),
+             selected->slot(fs_knl::Mod::MOD_CHEST)->getName(), false);
+         int chestx = 216;
+         int chesty = 146;
+@@ -160,44 +168,45 @@ void SelectMenu::drawAgent()
+             chestx += 8;
+             chesty += 2;
+         }
+-        menuSprites().drawSprite(chest, chestx, chesty, false, true);
++        menuSprites().drawSprite(chest, chestx, chesty + figShift, false, true);
+     }
+ 
+     if (selected->slot(fs_knl::Mod::MOD_HEART)) {
+         int heart = selected->slot(fs_knl::Mod::MOD_HEART)->icon(selected->isMale());
+-        getMenuFont(FontManager::SIZE_1)->drawText(366, 160,
++        getMenuFont(FontManager::SIZE_1)->drawText(366, mapY(160),
+             selected->slot(fs_knl::Mod::MOD_HEART)->getName(), false);
+-        menuSprites().drawSprite(heart, 254, 166, false, true);
++        menuSprites().drawSprite(heart, 254, 166 + figShift, false, true);
+     }
+ 
+     if (selected->slot(fs_knl::Mod::MOD_EYES)) {
+         int eyes = selected->slot(fs_knl::Mod::MOD_EYES)->icon(selected->isMale());
+-        getMenuFont(FontManager::SIZE_1)->drawText(366, 136,
++        getMenuFont(FontManager::SIZE_1)->drawText(366, mapY(136),
+             selected->slot(fs_knl::Mod::MOD_EYES)->getName(), false);
+         int eyesx = 238;
+         if (!selected->isMale()) {
+             eyesx += 2;
+         }
+-        menuSprites().drawSprite(eyes, eyesx, 116, false, true);
++        menuSprites().drawSprite(eyes, eyesx, 116 + figShift, false, true);
+     }
+ 
+     if (selected->slot(fs_knl::Mod::MOD_BRAIN)) {
+         int brain = selected->slot(fs_knl::Mod::MOD_BRAIN)->icon(selected->isMale());
+-        getMenuFont(FontManager::SIZE_1)->drawText(366, 112,
++        getMenuFont(FontManager::SIZE_1)->drawText(366, mapY(112),
+             selected->slot(fs_knl::Mod::MOD_BRAIN)->getName(), false);
+         int brainx = 238;
+         if (!selected->isMale()) {
+             brainx += 2;
+         }
+-        menuSprites().drawSprite(brain, brainx, 114, false, true);
++        menuSprites().drawSprite(brain, brainx, 114 + figShift, false, true);
+     }
+-    // restore lines over agent
+-    menu_manager_->copyFromBackground({254, 124}, 30, 2);
+-    menu_manager_->copyFromBackground({264, 132}, 30, 2);
+-    menu_manager_->copyFromBackground({266, 174}, 36, 2);
+-    menu_manager_->copyFromBackground({252, 210}, 56, 2);
+-    menu_manager_->copyFromBackground({302, 232}, 10, 2);
+-    menu_manager_->copyFromBackground({264, 256}, 30, 2);
++    // restore the baked connector lines over the agent (mapY: they live in the
++    // stretched background)
++    menu_manager_->copyFromBackground({254, mapY(124)}, 30, 2);
++    menu_manager_->copyFromBackground({264, mapY(132)}, 30, 2);
++    menu_manager_->copyFromBackground({266, mapY(174)}, 36, 2);
++    menu_manager_->copyFromBackground({252, mapY(210)}, 56, 2);
++    menu_manager_->copyFromBackground({302, mapY(232)}, 10, 2);
++    menu_manager_->copyFromBackground({264, mapY(256)}, 30, 2);
+ 
+     // draw inventory
+     Point2D pos[8];
+@@ -214,7 +223,7 @@ void SelectMenu::drawAgent()
+                 draw_weapons[7] = wi;
+             } else {
+                 draw_weapons[k] = wi;
+-                Point2D pos_l = {366 + i * 32, 308 + j * 32};
++                Point2D pos_l = {366 + i * 32, mapY(308 + j * 32)};
+                 pos[k] = pos_l;
+                 ++k;
+             }
