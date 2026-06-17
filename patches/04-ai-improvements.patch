@@ -1,0 +1,173 @@
+diff --git a/kernel/include/fs-kernel/ia/behaviour.h b/kernel/include/fs-kernel/ia/behaviour.h
+index e6e19e7..260786e 100644
+--- a/kernel/include/fs-kernel/ia/behaviour.h
++++ b/kernel/include/fs-kernel/ia/behaviour.h
+@@ -293,9 +293,11 @@ private:
+ /*!
+  * Defensive behaviour for player agents.
+  * Each scan period, checks for nearby armed hostile peds within a
+- * Perception-scaled radius. If the agent already has a weapon drawn,
+- * fires at the closest threat without moving.
+- * Agents never auto-equip weapons and never move toward threats.
++ * Perception-scaled radius. When a threat is found the agent draws a
++ * shooting weapon if it has none out (self-defence) and fires at the
++ * closest threat. Reacts according to IPA: Perception scales detection
++ * range, Adrenaline scales the scan/reaction frequency. Agents still
++ * fire in place (they do not chase threats).
+  */
+ class AgentDefenseBehaviourComponent : public BehaviourComponent {
+ public:
+@@ -306,6 +308,11 @@ public:
+ private:
+     //! Base detection range (same as other scout distances)
+     static const int kBaseDefenseRange;
++    //! Base scan period in ms, scaled down by Adrenaline (faster reaction)
++    static const int kBaseScanPeriod;
++    //! Lower/upper bounds for the adrenaline-scaled scan period (ms)
++    static const int kMinScanPeriod;
++    static const int kMaxScanPeriod;
+ 
+     //! Find the nearest armed hostile ped within the given range
+     PedInstance * findNearestArmedHostile(Mission *pMission, PedInstance *pPed, int range);
+@@ -325,6 +332,8 @@ public:
+     static const int kAllyAlertRange;
+     //! Maximum detection range
+     static const int kMaxIntelRange;
++    //! How long (ms) a target may stay out of sight before we give up pursuit
++    static const int kGiveUpPursuitMs;
+ 
+     PlayerHostileBehaviourComponent();
+ 
+@@ -343,6 +352,8 @@ private:
+     void alertNearbyAllies(Mission *pMission, PedInstance *pPed, PedInstance *pTarget);
+     //! Compute effective detection range based on weapon and perception IPA
+     int computeDetectionRange(PedInstance *pPed);
++    //! True if pTarget is still within detection range and line of sight
++    bool isTargetVisible(Mission *pMission, PedInstance *pPed, PedInstance *pTarget);
+ 
+    /*!
+      * Status for behavior.
+@@ -363,6 +374,8 @@ private:
+     fs_utl::Timer scoutTimer_;
+     /*! The ped that the owner has targeted and potentially is shooting at.*/
+     PedInstance *pTarget_;
++    /*! Accumulated time (ms) the current target has been out of sight.*/
++    int lostTargetMs_ = 0;
+ };
+ 
+ /*!
+diff --git a/kernel/src/ia/behaviour.cpp b/kernel/src/ia/behaviour.cpp
+index 5c65db6..eb58924 100644
+--- a/kernel/src/ia/behaviour.cpp
++++ b/kernel/src/ia/behaviour.cpp
+@@ -40,6 +40,9 @@ namespace fs_knl {
+ //*************************************
+ const int CommonAgentBehaviourComponent::kRegeratesHealthStep = 1;
+ const int AgentDefenseBehaviourComponent::kBaseDefenseRange = 1500;
++const int AgentDefenseBehaviourComponent::kBaseScanPeriod = 200;
++const int AgentDefenseBehaviourComponent::kMinScanPeriod = 80;
++const int AgentDefenseBehaviourComponent::kMaxScanPeriod = 500;
+ const int PanicComponent::kScoutDistance = 1500;
+ const int PanicComponent::kBaseDistanceToRun = 800;
+ const double PersuadedBehaviourComponent::kMaxRangeForSearchingWeapon = 500.0;
+@@ -47,6 +50,7 @@ const int PoliceBehaviourComponent::kPoliceScoutDistance = 1500;
+ const int PoliceBehaviourComponent::kPolicePendingTime = 1500;
+ const int PlayerHostileBehaviourComponent::kMaxIntelRange = 3584;
+ const int PlayerHostileBehaviourComponent::kAllyAlertRange = 2048;
++const int PlayerHostileBehaviourComponent::kGiveUpPursuitMs = 4000;
+ 
+ Behaviour::~Behaviour() {
+     destroyComponents();
+@@ -172,14 +176,22 @@ void AgentDefenseBehaviourComponent::execute(const Behaviour::BehaviourParam &pa
+ 
+     if (!scoutTimer_.update(param.elapsed))
+         return;
+-
+-    // Only fire back if the player has already drawn a weapon — never auto-equip
+-    if (!pPed->isArmed())
+-        return;
++    // Adrenaline drives reaction speed: high adrenaline shortens the scan
++    // period (quicker to react), low adrenaline lengthens it.
++    int scanPeriod = static_cast<int>(kBaseScanPeriod / pPed->adrenaline().getMultiplier());
++    if (scanPeriod < kMinScanPeriod) scanPeriod = kMinScanPeriod;
++    if (scanPeriod > kMaxScanPeriod) scanPeriod = kMaxScanPeriod;
++    scoutTimer_.reset(scanPeriod);
+ 
+     int range = static_cast<int>(kBaseDefenseRange * pPed->perception().getMultiplier());
+     PedInstance *pHostile = findNearestArmedHostile(param.pMission, pPed, range);
+     if (pHostile) {
++        // Self-defence: draw a shooting weapon if we have none out yet.
++        if (!pPed->isArmed()) {
++            pPed->selectShootingWeaponWithAmmo();
++            if (!pPed->isArmed())
++                return; // nothing to defend ourselves with
++        }
+         if (!pPed->isUsingWeapon()) {
+             pPed->setDirectionTowardObject(*pHostile);
+             WorldPoint targetPos(pHostile->position());
+@@ -691,9 +703,22 @@ void PlayerHostileBehaviourComponent::execute(const Behaviour::BehaviourParam &p
+             alertNearbyAllies(param.pMission, param.pPed, pArmedGuy);
+         }
+     } else if (status_ == kHostileStatusFollowAndShoot) {
+-        if (pTarget_ == NULL || pTarget_->isDead()) {
++        bool lostByTime = false;
++        if (pTarget_ != NULL && !pTarget_->isDead()) {
++            // Track how long the target has been out of sight; give up the
++            // chase if it stays hidden/out of range for too long instead of
++            // pursuing forever.
++            if (isTargetVisible(param.pMission, param.pPed, pTarget_)) {
++                lostTargetMs_ = 0;
++            } else {
++                lostTargetMs_ += param.elapsed;
++                lostByTime = (lostTargetMs_ >= kGiveUpPursuitMs);
++            }
++        }
++        if (pTarget_ == NULL || pTarget_->isDead() || lostByTime) {
+             status_ = kHostileStatusPendingEndFollow;
+             pTarget_ = NULL;
++            lostTargetMs_ = 0;
+             param.pPed->stopShooting();
+             WaitAction *pWait = new WaitAction(WaitAction::kWaitWeapon);
+             pWait->setWarnBehaviour(true);
+@@ -763,6 +788,18 @@ PedInstance * PlayerHostileBehaviourComponent::findVisiblePlayerAgent(Mission *p
+     return NULL;
+ }
+ 
++bool PlayerHostileBehaviourComponent::isTargetVisible(
++        Mission *pMission, PedInstance *pPed, PedInstance *pTarget) {
++    if (pTarget == NULL || !pTarget->isAlive())
++        return false;
++    int detectionRange = computeDetectionRange(pPed);
++    if (!pPed->isCloseTo(pTarget, detectionRange))
++        return false;
++    WorldPoint pedPosW(pPed->position());
++    WorldPoint targetPosW(pTarget->position());
++    return pMission->checkBlockedByTile(pedPosW, &targetPosW, false, detectionRange) == 1;
++}
++
+ void PlayerHostileBehaviourComponent::alertToEnemy(PedInstance *pOwner, PedInstance *pTarget) {
+     if (status_ != kHostileStatusDefault)
+         return;
+diff --git a/kernel/src/model/shot.cpp b/kernel/src/model/shot.cpp
+index dd3a8d6..67af885 100644
+--- a/kernel/src/model/shot.cpp
++++ b/kernel/src/model/shot.cpp
+@@ -87,6 +87,18 @@ void InstantImpactShot::diffuseImpact(Mission *pMission, const WorldPoint &origi
+     if (angle == 0)
+         return;
+ 
++    // Intelligence-scaled accuracy for player agents: smarter agents shoot a
++    // tighter cone of fire. Neutral IPA (1.0) leaves the spread unchanged;
++    // enemy spread is untouched to preserve combat balance.
++    PedInstance *pShooter = dmg_.pWeapon->owner();
++    if (pShooter && pShooter->isOurAgent()) {
++        double intelMult = pShooter->intelligence().getMultiplier(); // 0.5 .. 2.0
++        double factor = 1.5 - 0.5 * intelMult;   // 1.25 dull .. 1.0 neutral .. 0.5 sharp
++        if (factor < 0.4) factor = 0.4;
++        if (factor > 1.6) factor = 1.6;
++        angle *= factor;
++    }
++
+     angle *= (double)(69 + (rand() & 0x1F)) / 100.0;
+     int cx = originLocW.x;
+     int cy = originLocW.y;
