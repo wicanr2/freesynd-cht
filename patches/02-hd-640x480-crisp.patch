@@ -195,7 +195,7 @@ index 530dbe9..82e9099 100644
          }
  
 diff --git a/game/menus/selectmenu.cpp b/game/menus/selectmenu.cpp
-index c06bae1..76d6f5e 100644
+index c06bae1..c53c4b1 100644
 --- a/game/menus/selectmenu.cpp
 +++ b/game/menus/selectmenu.cpp
 @@ -133,26 +133,34 @@ void SelectMenu::drawAgent()
@@ -308,3 +308,26 @@ index c06bae1..76d6f5e 100644
                  pos[k] = pos_l;
                  ++k;
              }
+@@ -564,10 +573,19 @@ bool SelectMenu::handleMouseDown(Point2D point, int button)
+     // Checks if the user clicked on item in the current agent inventory
+     fs_knl::Agent *selected = g_gameCtrl.agents().squadMember(cur_agent_);
+     if (selected) {
+-        if (point.x >= 366 && point.x < 366 + 4 * 32
+-            && point.y >= 308 && point.y < 308 + 2 * 32)
++        // HD: the inventory icons are drawn at mapY(308 + j*32) (see drawAgent),
++        // so the hit-test must map each row the same way or the click misses
++        // the icon you see — which broke selecting/selling items.
++        int invRow = -1;
++        if (point.x >= 366 && point.x < 366 + 4 * 32) {
++            for (int j = 0; j < 2; j++) {
++                int ry = mapY(308 + j * 32);
++                if (point.y >= ry && point.y < ry + 32) { invRow = j; break; }
++            }
++        }
++        if (invRow >= 0)
+         {
+-            size_t newId = static_cast<size_t>((point.x - 366) / 32 + ((point.y - 308) / 32) * 4);
++            size_t newId = static_cast<size_t>((point.x - 366) / 32 + invRow * 4);
+             if (newId < selected->numWeapons())
+             {
+                 // The user has actually selected a weapon from the inventory :
