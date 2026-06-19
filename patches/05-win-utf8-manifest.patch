@@ -1,0 +1,53 @@
+diff --git a/game/CMakeLists.txt b/game/CMakeLists.txt
+index 9716b9b..298befa 100644
+--- a/game/CMakeLists.txt
++++ b/game/CMakeLists.txt
+@@ -140,6 +140,13 @@ if (APPLE)
+ elseif (WIN32)
+     install (TARGETS freesynd DESTINATION .)
+ 
++    # Embed the UTF-8 activeCodePage manifest so the game runs from a folder
++    # whose name contains CJK characters (see game/freesynd-utf8.manifest).
++    # windres needs the source dir on its include path to find the .manifest.
++    enable_language(RC)
++    set(CMAKE_RC_FLAGS "${CMAKE_RC_FLAGS} -I \"${CMAKE_CURRENT_SOURCE_DIR}\"")
++    target_sources(freesynd PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/freesynd-utf8.rc")
++
+     # Place the exe and all accompanying files inside a FreeSynd/ subfolder,
+     # mirroring the FreeSynd.app bundle layout on macOS.
+     set_target_properties(freesynd PROPERTIES
+diff --git a/game/freesynd-utf8.manifest b/game/freesynd-utf8.manifest
+new file mode 100644
+index 0000000..5d18126
+--- /dev/null
++++ b/game/freesynd-utf8.manifest
+@@ -0,0 +1,19 @@
++<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
++<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
++  <assemblyIdentity type="win32" name="FreeSynd.極道梟雄" version="1.0.0.0" processorArchitecture="*"/>
++  <!--
++    Force the process ANSI code page to UTF-8 (Windows 10 1903+). The engine
++    opens many files with narrow paths (ConfigFile std::ifstream(filename.c_str()),
++    fopen(path.string().c_str())...). On a zh-TW Windows whose system ACP is 950
++    (Big5), those UTF-8 path bytes are otherwise decoded as Big5 -> file not found
++    -> ConfigFile::file_not_found thrown -> terminate -> the game flash-crashes when
++    installed under a folder whose name contains CJK characters. activeCodePage UTF-8
++    makes the narrow CRT path functions interpret the bytes as UTF-8, matching the
++    path.string() output, so the files are found.
++  -->
++  <application xmlns="urn:schemas-microsoft-com:asm.v3">
++    <windowsSettings>
++      <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
++    </windowsSettings>
++  </application>
++</assembly>
+diff --git a/game/freesynd-utf8.rc b/game/freesynd-utf8.rc
+new file mode 100644
+index 0000000..a85d6cd
+--- /dev/null
++++ b/game/freesynd-utf8.rc
+@@ -0,0 +1,4 @@
++/* Embed the UTF-8 activeCodePage application manifest into freesynd.exe.
++   1  = CREATEPROCESS_MANIFEST_RESOURCE_ID (the manifest id for an .exe)
++   24 = RT_MANIFEST                                                        */
++1 24 "freesynd-utf8.manifest"
