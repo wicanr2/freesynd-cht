@@ -1,0 +1,60 @@
+diff --git a/game/menus/briefmenu.cpp b/game/menus/briefmenu.cpp
+index 530dbe9..020b0b2 100644
+--- a/game/menus/briefmenu.cpp
++++ b/game/menus/briefmenu.cpp
+@@ -210,16 +210,49 @@ bool BriefMenu::read_next_word(std::string & brief, std::string & line)
+     } while ((idx < brief.size()) && (last_char != ' ' && last_char != '\n'));
+ 
+     if (getMenuFont(FontManager::SIZE_2)->textWidth(new_line) > 470) {
+-        // space added to end of word will produce wrong width,
+-        // we remove it and check again
++        // A trailing space inflates the measured width; drop it and re-check.
+         if (last_char == ' ') {
+             new_line.erase(new_line.size() - 1, 1);
+-            if (getMenuFont(FontManager::SIZE_2)->textWidth(new_line) > 470)
+-                // new line is too big so we can add the line as it is
++        }
++        if (getMenuFont(FontManager::SIZE_2)->textWidth(new_line) > 470) {
++            // Still too wide. If the current line already has text, flush it
++            // and let this word retry on a fresh line.
++            if (!line.empty()) {
+                 return true;
+-        } else
+-            // new line is too big so we can add the line as it is
++            }
++            // The line is empty yet a single "word" is still too wide. This
++            // happens with CJK, which has no spaces, so a whole hard-wrapped
++            // line is one "word"; the original space-only wrapping then never
++            // consumed it and update_briefing_text() spun forever at a page
++            // boundary (the briefing screen hung). Break the word at a UTF-8
++            // codepoint boundary up to the width budget so we always consume
++            // at least one character.
++            std::string fitted;
++            size_t consumed = 0;
++            while (consumed < brief.size()) {
++                unsigned char ch = static_cast<unsigned char>(brief[consumed]);
++                if (ch == ' ' || ch == '\n') break;
++                size_t cl = 1;
++                if (ch >= 0xF0) cl = 4;
++                else if (ch >= 0xE0) cl = 3;
++                else if (ch >= 0xC0) cl = 2;
++                if (consumed + cl > brief.size()) cl = 1;
++                std::string probe = fitted + brief.substr(consumed, cl);
++                if (!fitted.empty() &&
++                    getMenuFont(FontManager::SIZE_2)->textWidth(probe) > 470) {
++                    break;
++                }
++                fitted = probe;
++                consumed += cl;
++            }
++            if (consumed == 0) {
++                consumed = 1;  // guarantee forward progress
++            }
++            line.assign(fitted);
++            brief.erase(0, consumed);
+             return true;
++        }
++        // Fits after dropping the trailing space — fall through to place it.
+     }
+ 
+     // we didn't reached the limit so add the word to the current line

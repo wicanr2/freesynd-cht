@@ -94,6 +94,7 @@ jobs:
           git apply ../freesynd-cht/patches/00-fix-panic-crash.patch
           git apply ../freesynd-cht/patches/01-freesynd-chinese-tc.patch
           git apply ../freesynd-cht/patches/04-ai-improvements.patch
+          git apply ../freesynd-cht/patches/06-fix-briefing-hang.patch
           git apply ../freesynd-cht/patches/02-hd-640x480-crisp.patch
           # fa27909 ships no data/fonts — the CHT bitmap fonts go here.
           mkdir -p data/fonts data/lang
