@@ -1,0 +1,175 @@
+diff --git a/engine/include/fs-engine/gfx/font.h b/engine/include/fs-engine/gfx/font.h
+index 23dd332..d5c60b6 100644
+--- a/engine/include/fs-engine/gfx/font.h
++++ b/engine/include/fs-engine/gfx/font.h
+@@ -118,6 +118,10 @@ public:
+     //! draws a UTF-8 text at the given position
+     void drawText(int x, int y, const std::string& text, bool lighted, bool x2 = true);
+ 
++    //! draws a UTF-8 text tinted with the given colour (e.g. to grey-out a
++    //! disabled button); restores the white modulation afterwards.
++    void drawText(int x, int y, const std::string& text, fs_eng::FSColor toColor, bool x2 = true);
++
+ protected:
+     //! returns the sprite which can be highlighted or not
+     Sprite *getSpriteForCodepoint(utf8::utfchar32_t codePoint, bool highlighted);
+diff --git a/engine/include/fs-engine/menus/widget.h b/engine/include/fs-engine/menus/widget.h
+index 3b6685d..52804f7 100644
+--- a/engine/include/fs-engine/menus/widget.h
++++ b/engine/include/fs-engine/menus/widget.h
+@@ -146,6 +146,9 @@ public:
+     //! Draw the widget on screen
+     void draw() override;
+ 
++    //! Draw the text greyed-out (dim) — used by disabled buttons.
++    void drawGreyed();
++
+     void setLocation(int x, int y);
+ 
+     void setText(const char * text, bool resolve = true);
+diff --git a/engine/src/gfx/font.cpp b/engine/src/gfx/font.cpp
+index 068058b..1926aa3 100644
+--- a/engine/src/gfx/font.cpp
++++ b/engine/src/gfx/font.cpp
+@@ -376,6 +376,65 @@ void MenuFont::drawText(int x, int y, const std::string& text, bool highlighted,
+     } //end of while
+ }
+ 
++/*!
++ * Same as the menu drawText but tints every glyph with \a toColor (CJK glyphs
++ * have no dark/light variant, so this is the only way to "grey out" a CJK
++ * label). The white modulation is restored at the end so following menu text
++ * draws — which assume no tint — render normally.
++ */
++void MenuFont::drawText(int x, int y, const std::string& text, fs_eng::FSColor toColor, bool x2) {
++    int sc = x2 ? 2 : 1;
++    int ox = x;
++
++    std::string newText(text);
++    std::string::iterator b = newText.begin();
++    std::string::iterator e = newText.end();
++    while ( b != e ) {
++        try {
++            auto codePoint = utf8::next(b,e);
++
++            if (codePoint == 0x0020) {
++                x += defaultWidth_ * sc - sc;
++                continue;
++            }
++            if (codePoint == 0x000A) {
++                x = ox;
++                y += textHeight() - sc;
++                continue;
++            }
++
++            if (Sprite *cjk = getCjkSpriteForCodepoint(codePoint)) {
++                cjkSprites_->setColorModulation(toColor);
++                cjkSprites_->drawSprite(cjk->id(), x, y, false, x2);
++                x += cjk->width() * sc;
++                continue;
++            }
++
++            Sprite *sprite = getSpriteForCodepoint(codePoint, true);
++            if (sprite) {
++                int y_offset = 0;
++                if (codePoint == ':') {
++                    y_offset = sc;
++                } else if (codePoint == '.' || codePoint == ',' || codePoint == '-' || codePoint == '_')
++                    y_offset = defaultHeight_ *sc - sprite->height() * sc;
++                else if (codePoint == '/') {
++                    y_offset = (defaultHeight_ *sc)/2 - (sprite->height() * sc) / 2;
++                }
++                sprites_->setColorModulation(toColor);
++                sprites_->drawSprite(sprite->id(), x, y + y_offset, false, x2);
++                x += sprite->width() * sc - sc;
++            }
++        } catch (const utf8::invalid_utf8& exc) {
++            continue;
++        }
++    } //end of while
++
++    // Restore the default (white = no tint) so the next menu draw is normal.
++    fs_eng::FSColor white = {255, 255, 255, 255};
++    sprites_->setColorModulation(white);
++    cjkSprites_->setColorModulation(white);
++}
++
+ /*!
+  * Constructor for the class.
+  * \param sprites SpriteManager that holds the font sprites
+diff --git a/engine/src/menus/widget.cpp b/engine/src/menus/widget.cpp
+index 90307cc..974b919 100644
+--- a/engine/src/menus/widget.cpp
++++ b/engine/src/menus/widget.cpp
+@@ -167,6 +167,12 @@ void MenuText::draw() {
+     pFont_->drawText(anchorX_, anchorY_, text_, highlighted_, doubleSize_);
+ }
+ 
++void MenuText::drawGreyed() {
++    // Dim desaturated-green so it reads as "disabled" but stays on-theme.
++    fs_eng::FSColor grey = {104, 124, 104, 255};
++    pFont_->drawText(anchorX_, anchorY_, text_, grey, doubleSize_);
++}
++
+ bool ActionWidget::isMouseOver(Point2D point) {
+ 
+     return (point.x > x_  &&
+@@ -260,7 +266,13 @@ void Option::draw() {
+         getPeer()->menuSprites().drawSprite(darkWidget_->id(), x, y_, false, true);
+     }
+ 
+-    text_.draw();
++    // A shown-but-disabled button renders its label dim (greyed) so the player
++    // can see it exists yet is not currently actionable.
++    if (isWidgetEnabled()) {
++        text_.draw();
++    } else {
++        text_.drawGreyed();
++    }
+ }
+ 
+ /*!
+diff --git a/game/menus/selectmenu.cpp b/game/menus/selectmenu.cpp
+index c06bae1..f69e6c8 100644
+--- a/game/menus/selectmenu.cpp
++++ b/game/menus/selectmenu.cpp
+@@ -589,9 +589,14 @@ bool SelectMenu::handleMouseDown(Point2D point, int button)
+                     pSelectedWeap_ = wi->getClass();
+                     // 3/ see if reload button should be displayed,
+                     // if weapon is not researched it will not be reloadable
+-                    bool displayReload = wi->needsReloading()
+-                        && g_gameCtrl.weaponManager().isAvailable(pSelectedWeap_);
+-                    getOption(reloadButId_)->setVisible(displayReload);
++                    // CHT UX: keep the 重新裝填 (reload) button VISIBLE for any
++                    // owned, available weapon so it never looks like it
++                    // "vanished" (tester report) — it just renders greyed
++                    // (disabled) when the weapon is already full.
++                    bool reloadAvail =
++                        g_gameCtrl.weaponManager().isAvailable(pSelectedWeap_);
++                    getOption(reloadButId_)->setVisible(reloadAvail);
++                    getOption(reloadButId_)->setWidgetEnabled(wi->needsReloading());
+ 
+                     // 4/ hides the purchase button for the sell button
+                     getOption(purchaseButId_)->setVisible(false);
+@@ -715,7 +720,8 @@ void SelectMenu::handleAction(const ActionDesc &action)
+         if (g_Session.canAfford(rldCost)) {
+             g_Session.decreaseMoney(rldCost);
+             pSelectedWInstance_->reload();
+-            getOption(reloadButId_)->setVisible(false);
++            // Full now — keep the button visible but grey it out (CHT UX).
++            getOption(reloadButId_)->setWidgetEnabled(false);
+             getStatic(moneyTxtId_)->setTextFormated("%d", g_Session.getMoney());
+         }
+     } else if (action.id == purchaseButId_) {
+@@ -787,9 +793,8 @@ void SelectMenu::updateSelectedWeapon() {
+         if (g_gameCtrl.weaponManager().isAvailable(pSelectedWInstance_->getClass())) {
+             getOption(sellButId_)->setVisible(false);
+             getOption(purchaseButId_)->setVisible(true);
+-            if (pSelectedWInstance_->needsReloading()) {
+-                getOption(reloadButId_)->setVisible(false);
+-            }
++            // Leaving the owned-weapon detail — hide reload regardless of state.
++            getOption(reloadButId_)->setVisible(false);
+             getOption(cancelButId_)->setVisible(true);
+             pSelectedWInstance_ = nullptr;
+         } else {
