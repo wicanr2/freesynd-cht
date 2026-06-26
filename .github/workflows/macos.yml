@@ -26,6 +26,7 @@ on:
   push:
     paths:
       - '.github/workflows/macos.yml'
+      - 'ci/**'
       - 'patches/**'
       - 'fonts/**'
       - 'data/lang/**'
@@ -68,25 +69,26 @@ jobs:
           conan profile detect --force
           which dylibbundler cmake ninja conan
 
-      - name: Install SDL for target arch (${{ matrix.arch }})
+      - name: Build real SDL2 stack from source (${{ matrix.arch }}, target 13.4)
         run: |
-          # SDL is a *system* dep (FindSDL2 + USE_SYSTEM_SDL). The conan libs
-          # (libpng/cli11/crcpp/utfcpp) come later via the conan provider, which
-          # cross-targets x86_64 from CMAKE_OSX_ARCHITECTURES automatically.
+          # DO NOT `brew install sdl2`: in 2026-06 Homebrew swapped sdl2 for
+          # sdl2-compat (an SDL2-API-on-SDL3 shim that dlopen()s libSDL3 at
+          # runtime). dylibbundler can't bundle that runtime dep → players hit
+          # "Failed loading SDL3 library" (open-king-bounty-cht issue #3). We
+          # build pinned REAL SDL2 + SDL2_image(stb) + SDL2_mixer(no decoders)
+          # from source, targeting 13.4. SDL is a system dep (FindSDL2 +
+          # USE_SYSTEM_SDL); conan libs (libpng/cli11/...) come via the provider.
+          chmod +x freesynd-cht/ci/build-sdl2-from-source.sh
           if [ "${{ matrix.cross }}" = "true" ]; then
-            echo "== x86_64 cross: Rosetta + Intel Homebrew (x86_64 SDL bottles) =="
+            # x86_64: build under Rosetta so the toolchain is natively x86_64
+            # (configure run-tests work) — no fragile autotools cross setup.
             sudo softwareupdate --install-rosetta --agree-to-license || true
-            if [ ! -x /usr/local/bin/brew ]; then
-              arch -x86_64 /bin/bash -c \
-                'NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
-            fi
-            arch -x86_64 /usr/local/bin/brew install sdl2 sdl2_image sdl2_mixer
-            echo "BREW_PREFIX=/usr/local" >> "$GITHUB_ENV"
+            arch -x86_64 /bin/sh freesynd-cht/ci/build-sdl2-from-source.sh "$RUNNER_TEMP/sdlp" x86_64
           else
-            brew install sdl2 sdl2_image sdl2_mixer || true
-            echo "BREW_PREFIX=$(brew --prefix)" >> "$GITHUB_ENV"
+            /bin/sh freesynd-cht/ci/build-sdl2-from-source.sh "$RUNNER_TEMP/sdlp" arm64
           fi
-          echo "SDL prefix for this arch: ${BREW_PREFIX:-pending} (written to GITHUB_ENV)"
+          echo "SDL_PREFIX=$RUNNER_TEMP/sdlp" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/sdlp/bin" >> "$GITHUB_PATH"
 
       - name: Apply CHT patches + bake in fonts / chinese-tw.lng
         working-directory: freesynd
@@ -104,7 +106,7 @@ jobs:
           echo "fonts:" && ls -1 data/fonts/chinese-*.fnt
           echo "lng:"   && ls -1 data/lang/chinese-tw.lng
 
-      - name: Configure (CMake, system SDL via Homebrew, ${{ matrix.arch }})
+      - name: Configure (CMake, system SDL from source, ${{ matrix.arch }})
         working-directory: freesynd
         run: |
           cmake -S . -B build -G Ninja \
@@ -115,7 +117,7 @@ jobs:
             -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES=cmake/conan_provider.cmake \
             -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=13.4 \
-            -DCMAKE_PREFIX_PATH="$BREW_PREFIX"
+            -DCMAKE_PREFIX_PATH="$SDL_PREFIX"
 
       - name: Build
         working-directory: freesynd
